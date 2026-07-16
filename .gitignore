@@ -1,0 +1,22 @@
+# Build output
+dist/
+build/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Secrets & runtime data — never commit
+.env
+*.cred
+creds/
+tokens/
+
+# Logs & local data
+*.log
+last_student_ids.csv
+student_accounts.json
+_test_cred_setup/
+
+# Local tooling
+.claude/
