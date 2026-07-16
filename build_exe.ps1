@@ -9,6 +9,7 @@ python -m PyInstaller `
   --noconfirm `
   --clean `
   --windowed `
+  --onefile `
   --name "M365-Tools" `
   --paths "account_app" `
   --paths "student_app" `
