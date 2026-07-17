@@ -40,7 +40,7 @@ On the setup page:
 
 No Entra app registration or client/tenant IDs are needed. The app signs in with a one-time device code per tenant using Microsoft's first-party client — Microsoft handles the password and MFA, and the session stays connected silently for ~90 days.
 
-If one tenant's admin account also administers other tenants, list those tenants in the `Manages` field when adding the account (comma-separated RTO names). Managed tenants then authenticate through the managing tenant's connection instead of needing their own sign-in.
+If a single Microsoft 365 tenant has multiple verified domains, add each domain as its own RTO entry and list those entries in the `Manages` field of the primary account (comma-separated RTO names). They then share the primary account's sign-in instead of needing their own.
 
 ## Syncro integration (optional)
 

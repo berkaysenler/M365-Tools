@@ -183,9 +183,9 @@ class CredentialDialog(tk.Toplevel):
             text=(
                 "Sign-in uses a one-time device code per tenant — Microsoft handles the "
                 "password and MFA. After signing in once you stay connected silently for ~90 days.\n\n"
-                "Manages: if this tenant's admin account also administers other tenants, "
-                "list their RTO names (comma-separated). Those tenants will sign in through "
-                "this tenant's connection instead of needing their own."
+                "Manages: if other RTO entries are different domains of this same Microsoft 365 "
+                "tenant, list their names (comma-separated). They share this account's sign-in "
+                "instead of needing their own."
             ),
             wraplength=460,
             foreground="#555",
