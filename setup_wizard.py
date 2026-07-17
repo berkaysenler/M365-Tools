@@ -235,7 +235,7 @@ def _upsert_config_account(data: dict):
     entry.setdefault("syncro_org_id", entry.get("syncro_org_id", ""))
     entry.setdefault("notification_recipients", entry.get("notification_recipients", []))
     if "manages" in data:
-        managed = [m.strip().upper() for m in data["manages"].split(",") if m.strip()]
+        managed = [m.strip().upper() for m in data["manages"].replace(";", ",").split(",") if m.strip()]
         if managed:
             entry["manages"] = managed
         else:
