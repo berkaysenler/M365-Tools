@@ -566,6 +566,124 @@ class GraphManager:
                 f"{self._err_text(doc)}"
             )
 
+    # ------------------------------------------------------------------
+    # User Manager
+    # ------------------------------------------------------------------
+
+    def search_users(self, token: str, query: str) -> list[dict]:
+        """Search users by display name, UPN or mail prefix. Returns up to 25
+        matches with the fields the User Manager result list shows."""
+        safe = (query or "").strip().replace("'", "''")
+        if not safe:
+            return []
+        filt = urllib.parse.quote(
+            f"startswith(displayName,'{safe}') or "
+            f"startswith(userPrincipalName,'{safe}') or "
+            f"startswith(mail,'{safe}')"
+        )
+        status, doc = self._request(
+            "GET",
+            f"/users?$filter={filt}"
+            "&$select=id,displayName,userPrincipalName,mail,jobTitle,department"
+            "&$top=25",
+            token,
+        )
+        if status != 200 or not isinstance(doc, dict):
+            raise GraphError(
+                f"GET users search failed (HTTP {status}): {self._err_text(doc)}"
+            )
+        return [
+            {
+                "id": u.get("id", ""),
+                "displayName": u.get("displayName", ""),
+                "upn": u.get("userPrincipalName", ""),
+                "mail": u.get("mail") or u.get("userPrincipalName", ""),
+                "jobTitle": u.get("jobTitle") or "",
+                "department": u.get("department") or "",
+            }
+            for u in doc.get("value", [])
+        ]
+
+    def get_user_profile(self, token: str, identity: str) -> dict | None:
+        """Full editable profile for the User Manager, or None if not found.
+        Includes the current manager (id/displayName/upn) when set."""
+        status, doc = self._request(
+            "GET",
+            f"/users/{urllib.parse.quote(identity)}"
+            "?$select=id,displayName,givenName,surname,userPrincipalName,mail,"
+            "jobTitle,department,officeLocation,city,mobilePhone,accountEnabled",
+            token,
+        )
+        if status == 404:
+            return None
+        if status != 200 or not isinstance(doc, dict):
+            raise GraphError(f"GET user failed (HTTP {status}): {self._err_text(doc)}")
+
+        profile = {
+            "id": doc.get("id", ""),
+            "displayName": doc.get("displayName") or "",
+            "upn": doc.get("userPrincipalName") or "",
+            "mail": doc.get("mail") or doc.get("userPrincipalName") or "",
+            "jobTitle": doc.get("jobTitle") or "",
+            "department": doc.get("department") or "",
+            "officeLocation": doc.get("officeLocation") or "",
+            "city": doc.get("city") or "",
+            "mobilePhone": doc.get("mobilePhone") or "",
+            "accountEnabled": doc.get("accountEnabled"),
+            "manager": None,
+        }
+        m_status, m_doc = self._request(
+            "GET",
+            f"/users/{urllib.parse.quote(identity)}/manager"
+            "?$select=id,displayName,userPrincipalName",
+            token,
+        )
+        if m_status == 200 and isinstance(m_doc, dict):
+            profile["manager"] = {
+                "id": m_doc.get("id", ""),
+                "displayName": m_doc.get("displayName", ""),
+                "upn": m_doc.get("userPrincipalName", ""),
+            }
+        return profile
+
+    def update_user(self, token: str, identity: str, fields: dict) -> None:
+        """PATCH arbitrary user fields (only pass what changed)."""
+        if not fields:
+            return
+        status, doc = self._request(
+            "PATCH",
+            f"/users/{urllib.parse.quote(identity)}",
+            token,
+            body=fields,
+        )
+        if status not in (200, 204):
+            raise GraphError(
+                f"PATCH user failed (HTTP {status}): {self._err_text(doc)}"
+            )
+
+    def set_manager(self, token: str, identity: str, manager_id: str) -> None:
+        status, doc = self._request(
+            "PUT",
+            f"/users/{urllib.parse.quote(identity)}/manager/$ref",
+            token,
+            body={"@odata.id": f"{GRAPH_BASE}/users/{manager_id}"},
+        )
+        if status not in (200, 204):
+            raise GraphError(
+                f"PUT manager failed (HTTP {status}): {self._err_text(doc)}"
+            )
+
+    def remove_manager_graph(self, token: str, identity: str) -> None:
+        status, doc = self._request(
+            "DELETE",
+            f"/users/{urllib.parse.quote(identity)}/manager/$ref",
+            token,
+        )
+        if status not in (200, 204, 404):
+            raise GraphError(
+                f"DELETE manager failed (HTTP {status}): {self._err_text(doc)}"
+            )
+
     def reset_password(self, token: str, identity: str, new_password: str,
                        force_change: bool = False) -> None:
         """Set a new password on the user. The signed-in admin needs

@@ -162,7 +162,7 @@ class BulkCreationFrame(ttk.Frame):
             style="Pending.Treeview",
         )
         headings = {
-            "name": "Display Name (double-click to edit)",
+            "name": "Display Name",
             "upn": "UPN",
             "rto": "RTO",
             "title": "Job Title",
@@ -194,6 +194,11 @@ class BulkCreationFrame(ttk.Frame):
         self._clear_btn.pack(side="left", padx=(6, 0))
         self._create_btn = ttk.Button(actions, text="Create All Accounts", command=self._submit)
         self._create_btn.pack(side="right")
+        ttk.Label(
+            actions,
+            text="Double-click any cell to edit — licenses and groups open a picker.",
+            foreground=C_DIM, font=("Segoe UI", 8),
+        ).pack(side="left", padx=(12, 0))
         self._widgets.extend([self.tree, self._remove_btn, self._clear_btn, self._create_btn])
 
         results_frame = ttk.LabelFrame(self, text="Creation Output")
@@ -488,6 +493,14 @@ class BulkCreationFrame(ttk.Frame):
         self._refresh_create_state()
         self._status_var.set(f"{len(self._rows)} account(s) ready to create.")
 
+    # Column id -> (tree column name, AccountData attribute or None for password)
+    _EDITABLE_TEXT_COLUMNS = {
+        "#1": ("name", "display_name"),
+        "#2": ("upn", "upn"),
+        "#4": ("title", "title"),
+        "#7": ("password", None),
+    }
+
     def _on_tree_double_click(self, event):
         if self._submitting or not self._enabled:
             return
@@ -495,8 +508,6 @@ class BulkCreationFrame(ttk.Frame):
         if region != "cell":
             return
         column = self.tree.identify_column(event.x)
-        if column != "#1":  # only the Display Name column
-            return
         item_id = self.tree.identify_row(event.y)
         if not item_id:
             return
@@ -506,11 +517,25 @@ class BulkCreationFrame(ttk.Frame):
         except ValueError:
             return
 
+        if column in self._EDITABLE_TEXT_COLUMNS:
+            col_name, attr = self._EDITABLE_TEXT_COLUMNS[column]
+            self._edit_text_cell(index, item_id, column, col_name, attr)
+        elif column == "#5":
+            self._edit_row_licenses(index, item_id)
+        elif column == "#6":
+            self._edit_row_groups(index, item_id)
+        elif column == "#3":
+            self._status_var.set(
+                "The tenant of a pending row can't be changed — remove the row "
+                "and add it again under the right 'Create For'."
+            )
+
+    def _edit_text_cell(self, index, item_id, column, col_name, attr):
         bbox = self.tree.bbox(item_id, column)
         if not bbox:
             return
         x, y, w, h = bbox
-        current = self.tree.set(item_id, "name")
+        current = self.tree.set(item_id, col_name)
 
         if self._edit_entry is not None:
             self._edit_entry.destroy()
@@ -528,11 +553,27 @@ class BulkCreationFrame(ttk.Frame):
             new_value = entry.get().strip()
             entry.destroy()
             self._edit_entry = None
-            if not new_value or new_value == current:
+            if new_value == current:
+                return
+            # Job Title may be cleared; the others must not be empty.
+            if not new_value and col_name != "title":
                 return
             acc, password = self._rows[index]
-            acc.display_name = new_value
-            self.tree.set(item_id, "name", new_value)
+            if col_name == "upn":
+                if "@" not in new_value:
+                    self._status_var.set("UPN must be a full address (user@domain).")
+                    return
+                if any(
+                    i != index and existing.upn.lower() == new_value.lower()
+                    for i, (existing, _) in enumerate(self._rows)
+                ):
+                    self._status_var.set(f"{new_value} is already in the pending list.")
+                    return
+            if attr is None:  # password lives in the row tuple, not AccountData
+                self._rows[index] = (acc, new_value)
+            else:
+                setattr(acc, attr, new_value)
+            self.tree.set(item_id, col_name, new_value)
 
         def cancel(_=None):
             entry.destroy()
@@ -541,6 +582,114 @@ class BulkCreationFrame(ttk.Frame):
         entry.bind("<Return>", commit)
         entry.bind("<FocusOut>", commit)
         entry.bind("<Escape>", cancel)
+
+    def _auth_rto_for_row(self, acc) -> str:
+        for option in self._domain_options:
+            if option.get("rto") == acc.rto:
+                return option.get("auth_rto", acc.rto)
+        return acc.rto
+
+    def _edit_dialog(self, title, height=380):
+        """Small dark modal shell for the license/group pickers."""
+        dlg = tk.Toplevel(self)
+        dlg.title(title)
+        dlg.geometry(f"420x{height}")
+        dlg.configure(bg=C_BG)
+        dlg.transient(self.winfo_toplevel())
+        dlg.grab_set()
+        body = ttk.Frame(dlg, padding=12)
+        body.pack(fill="both", expand=True)
+        return dlg, body
+
+    def _edit_row_licenses(self, index, item_id):
+        acc, _ = self._rows[index]
+        options = list(self._license_catalog.get(self._auth_rto_for_row(acc), []))
+        # Keep any licenses already on the row that are missing from the
+        # catalog (e.g. catalog not loaded yet) so they aren't silently lost.
+        known = {o.get("skuId") for o in options}
+        options += [l for l in acc.licenses if l.get("skuId") not in known]
+        if not options:
+            self._status_var.set(
+                "No licenses loaded for this tenant yet — connect first."
+            )
+            return
+
+        dlg, body = self._edit_dialog(f"Licenses — {acc.display_name}")
+        ttk.Label(body, text="Tick the licenses for this account:").pack(anchor="w")
+
+        selected_ids = {l.get("skuId") for l in acc.licenses}
+        rows = []
+        for option in options:
+            var = tk.BooleanVar(value=option.get("skuId") in selected_ids)
+            ttk.Checkbutton(
+                body, text=option.get("name", ""), variable=var,
+            ).pack(anchor="w", pady=2)
+            rows.append((var, option))
+
+        def save():
+            acc.licenses = [
+                {"skuId": o.get("skuId", ""), "name": o.get("name", "")}
+                for var, o in rows if var.get()
+            ]
+            self.tree.set(item_id, "license",
+                          "; ".join(l["name"] for l in acc.licenses) or "—")
+            dlg.destroy()
+
+        buttons = ttk.Frame(body)
+        buttons.pack(side="bottom", fill="x", pady=(10, 0))
+        ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(buttons, text="Save", style="Accent.TButton", command=save).pack(side="right")
+
+    def _edit_row_groups(self, index, item_id):
+        acc, _ = self._rows[index]
+        current = [dict(g) for g in acc.distribution_groups]
+
+        dlg, body = self._edit_dialog(f"Groups — {acc.display_name}", height=440)
+        ttk.Label(body, text="Type to add a group; remove with ×:").pack(anchor="w")
+
+        picker_holder = ttk.Frame(body)
+        picker_holder.pack(fill="x", pady=(4, 6))
+        picker_holder.columnconfigure(0, weight=1)
+
+        listing = ttk.Frame(body)
+        listing.pack(fill="both", expand=True)
+
+        def refresh():
+            for child in listing.winfo_children():
+                child.destroy()
+            for group in current:
+                row = ttk.Frame(listing)
+                row.pack(fill="x", pady=1)
+                ttk.Label(row, text=group.get("displayName", "")).pack(side="left")
+                ttk.Button(
+                    row, text="×", width=3,
+                    command=lambda g=group: (current.remove(g), refresh()),
+                ).pack(side="right")
+
+        def add(group):
+            name = group.get("displayName", "").strip()
+            if not name:
+                return
+            if any(g.get("displayName", "").lower() == name.lower() for g in current):
+                return
+            current.append(group)
+            refresh()
+
+        picker = GroupSearch(picker_holder, on_pick=add)
+        picker.grid(row=0, column=0, sticky="ew")
+        picker.set_options(self._group_catalog.get(self._auth_rto_for_row(acc), []))
+        refresh()
+
+        def save():
+            acc.distribution_groups = list(current)
+            self.tree.set(item_id, "groups",
+                          "; ".join(g["displayName"] for g in acc.distribution_groups))
+            dlg.destroy()
+
+        buttons = ttk.Frame(body)
+        buttons.pack(side="bottom", fill="x", pady=(10, 0))
+        ttk.Button(buttons, text="Cancel", command=dlg.destroy).pack(side="right", padx=(6, 0))
+        ttk.Button(buttons, text="Save", style="Accent.TButton", command=save).pack(side="right")
 
     def _remove_selected(self):
         selected = list(self.tree.selection())

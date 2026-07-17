@@ -70,3 +70,72 @@ class SyncroClient:
 
         detail = resp.text[:200].strip().replace("\n", " ")
         return f"Syncro returned {resp.status_code}: {detail}"
+
+    def _headers(self) -> dict:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/json",
+        }
+
+    def find_contact(self, customer_id, email: str) -> tuple[dict | None, str | None]:
+        """Find a contact under customer_id by email (case-insensitive).
+
+        Returns (contact, None) when found, (None, None) when not found,
+        (None, error) on API failure. Walks pagination.
+        """
+        if not customer_id:
+            return None, "Syncro: syncro_org_id not set for this RTO"
+        target = (email or "").strip().lower()
+        if not target:
+            return None, "Syncro: no email to search for"
+
+        page = 1
+        while True:
+            try:
+                resp = requests.get(
+                    self._url("contacts"),
+                    params={"customer_id": customer_id, "page": page},
+                    headers=self._headers(),
+                    timeout=20,
+                )
+            except requests.RequestException as exc:
+                return None, f"Syncro contact search failed: {exc}"
+            if not (200 <= resp.status_code < 300):
+                detail = resp.text[:200].strip().replace("\n", " ")
+                return None, f"Syncro returned {resp.status_code}: {detail}"
+
+            try:
+                doc = resp.json()
+            except ValueError:
+                return None, "Syncro returned a non-JSON response"
+            contacts = doc.get("contacts", doc if isinstance(doc, list) else [])
+            for contact in contacts:
+                if (contact.get("email") or "").strip().lower() == target:
+                    return contact, None
+
+            meta = doc.get("meta", {}) if isinstance(doc, dict) else {}
+            total_pages = meta.get("total_pages", page)
+            if page >= total_pages or not contacts:
+                return None, None
+            page += 1
+
+    def update_contact(self, contact_id, fields: dict) -> str | None:
+        """PUT changed fields onto an existing contact. Returns None on
+        success, error string on failure. fields keys: name, email, title, city."""
+        if not contact_id:
+            return "Syncro: missing contact id"
+        if not fields:
+            return None
+        try:
+            resp = requests.put(
+                self._url(f"contacts/{contact_id}"),
+                json=fields,
+                headers=self._headers(),
+                timeout=20,
+            )
+        except requests.RequestException as exc:
+            return f"Syncro contact update failed: {exc}"
+        if 200 <= resp.status_code < 300:
+            return None
+        detail = resp.text[:200].strip().replace("\n", " ")
+        return f"Syncro returned {resp.status_code}: {detail}"

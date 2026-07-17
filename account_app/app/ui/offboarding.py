@@ -76,8 +76,10 @@ class OffboardingSection(ctk.CTkFrame):
 
         self._results: list[dict] = []
         self._result_rows: list[ctk.CTkFrame] = []
-        self._selected_index: int | None = None
-        self._license_vars: list[tuple[tk.BooleanVar, dict]] = []
+        self._result_buttons: list[ctk.CTkButton] = []
+        self._selected: set[int] = set()
+        # index -> [(BooleanVar, license dict), ...] for each selected account
+        self._license_vars: dict[int, list[tuple[tk.BooleanVar, dict]]] = {}
         self._auth_dialog = None
         self._busy = False
         self._summary_text = ""
@@ -204,12 +206,14 @@ class OffboardingSection(ctk.CTkFrame):
         fwd_row.grid(row=4, column=0, sticky="ew", padx=(24, 0), pady=(2, 2))
         fwd_row.grid_columnconfigure(0, weight=1)
         self.forward_entry = ctk.CTkEntry(
-            fwd_row, placeholder_text="alias to forward to",
+            fwd_row, placeholder_text="alias, or a full external address",
             fg_color=C_FIELD, border_color=C_BORDER, text_color=C_TEXT,
         )
         self.forward_entry.grid(row=0, column=0, sticky="ew")
         self.forward_domain_lbl = ctk.CTkLabel(
-            fwd_row, text="@—", text_color=C_DIM,
+            fwd_row,
+            text="alias → @account's own domain; full address (with @) used as-is",
+            text_color=C_DIM,
         )
         self.forward_domain_lbl.grid(row=0, column=1, padx=(6, 0))
         deliver_box = ctk.CTkCheckBox(
@@ -230,7 +234,7 @@ class OffboardingSection(ctk.CTkFrame):
         right.grid(row=0, column=1, sticky="nsew", padx=(8, 14), pady=10)
         right.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
-            right, text="Licenses to remove (untick any to keep):",
+            right, text="Licenses to remove, per selected account (untick any to keep):",
             text_color=C_TEXT, anchor="w",
         ).grid(row=0, column=0, sticky="ew")
         self.licenses_frame = ctk.CTkScrollableFrame(
@@ -238,7 +242,8 @@ class OffboardingSection(ctk.CTkFrame):
         )
         self.licenses_frame.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
         self._license_placeholder = ctk.CTkLabel(
-            self.licenses_frame, text="Select an account above to load its licenses.",
+            self.licenses_frame,
+            text="Select one or more accounts above to load their licenses.",
             text_color=C_DIM,
         )
         self._license_placeholder.pack(anchor="w", padx=8, pady=8)
@@ -395,13 +400,13 @@ class OffboardingSection(ctk.CTkFrame):
 
     def _clear_results(self):
         self._results = []
-        self._selected_index = None
+        self._selected = set()
         for row in self._result_rows:
             row.destroy()
         self._result_rows = []
+        self._result_buttons = []
         self._reset_license_list()
         self.run_btn.configure(state="disabled")
-        self.forward_domain_lbl.configure(text="@—")
 
     def _add_result_row(self, info: dict):
         index = len(self._results)
@@ -418,11 +423,13 @@ class OffboardingSection(ctk.CTkFrame):
         row.grid_columnconfigure(1, weight=1)
 
         pick = ctk.CTkButton(
-            row, text="Select", width=64,
-            fg_color=C_SELECTED, hover_color="#1d4ed8",
-            command=lambda i=index: self._select_result(i),
+            row, text="Select", width=76,
+            fg_color=C_PANEL, hover_color="#1d4ed8",
+            border_width=1, border_color=C_BORDER,
+            command=lambda i=index: self._toggle_result(i),
         )
         pick.grid(row=0, column=0, rowspan=2, padx=8, pady=8)
+        self._result_buttons.append(pick)
 
         ctk.CTkLabel(
             row,
@@ -439,16 +446,29 @@ class OffboardingSection(ctk.CTkFrame):
 
         self._result_rows.append(row)
 
-    def _select_result(self, index: int):
-        self._selected_index = index
+    def _toggle_result(self, index: int):
+        """Toggle an account in/out of the selection (multi-select)."""
+        if index in self._selected:
+            self._selected.discard(index)
+        else:
+            self._selected.add(index)
+
+        for i, (row, btn) in enumerate(zip(self._result_rows, self._result_buttons)):
+            selected = i in self._selected
+            row.configure(border_color=C_SELECTED if selected else C_BORDER)
+            btn.configure(
+                text="Selected ✓" if selected else "Select",
+                fg_color=C_SELECTED if selected else C_PANEL,
+            )
+
+        self._populate_license_list()
+        self.run_btn.configure(state="normal" if self._selected else "disabled")
+
         info = self._results[index]
-        for i, row in enumerate(self._result_rows):
-            row.configure(border_color=C_SELECTED if i == index else C_BORDER)
-        self.forward_domain_lbl.configure(text=f"@{info['domain']}")
-        self._populate_license_list(info.get("licenses", []))
-        self.run_btn.configure(state="normal")
+        verb = "Selected" if index in self._selected else "Deselected"
         self._append_log(
-            f"Selected {info['displayName']} <{info['upn']}> in {info['tenant']}.",
+            f"{verb} {info['displayName']} <{info['upn']}> in {info['tenant']} "
+            f"({len(self._selected)} account(s) selected).",
             "head",
         )
 
@@ -459,54 +479,94 @@ class OffboardingSection(ctk.CTkFrame):
     def _reset_license_list(self):
         for child in self.licenses_frame.winfo_children():
             child.destroy()
-        self._license_vars = []
+        self._license_vars = {}
         self._license_placeholder = ctk.CTkLabel(
-            self.licenses_frame, text="Select an account above to load its licenses.",
+            self.licenses_frame,
+            text="Select one or more accounts above to load their licenses.",
             text_color=C_DIM,
         )
         self._license_placeholder.pack(anchor="w", padx=8, pady=8)
 
-    def _populate_license_list(self, licenses: list[dict]):
+    def _populate_license_list(self):
+        """One checkbox group per selected account. Existing tick states are
+        kept when re-rendering after a selection change."""
+        previous = {
+            idx: {lic["skuId"]: var.get() for var, lic in vars_}
+            for idx, vars_ in self._license_vars.items()
+        }
         for child in self.licenses_frame.winfo_children():
             child.destroy()
-        self._license_vars = []
-        if not licenses:
-            ctk.CTkLabel(
-                self.licenses_frame, text="This account has no licenses assigned.",
-                text_color=C_DIM,
-            ).pack(anchor="w", padx=8, pady=8)
+        self._license_vars = {}
+
+        if not self._selected:
+            self._reset_license_list()
             return
-        for lic in licenses:
-            var = tk.BooleanVar(value=True)
-            box = ctk.CTkCheckBox(
-                self.licenses_frame, text=lic["name"], variable=var,
-                text_color=C_TEXT, fg_color=C_SELECTED, hover_color="#1d4ed8",
-                border_color=C_BORDER, checkbox_height=18, checkbox_width=18,
-            )
-            box.pack(anchor="w", padx=8, pady=3)
-            self._license_vars.append((var, lic))
+
+        for idx in sorted(self._selected):
+            info = self._results[idx]
+            ctk.CTkLabel(
+                self.licenses_frame,
+                text=f"{info['displayName']}  <{info['upn']}>",
+                text_color=C_TEXT, font=ctk.CTkFont(size=12, weight="bold"),
+            ).pack(anchor="w", padx=8, pady=(8, 2))
+            licenses = info.get("licenses", [])
+            if not licenses:
+                ctk.CTkLabel(
+                    self.licenses_frame, text="No licenses assigned.",
+                    text_color=C_DIM,
+                ).pack(anchor="w", padx=20, pady=(0, 4))
+                self._license_vars[idx] = []
+                continue
+            vars_ = []
+            for lic in licenses:
+                kept = previous.get(idx, {}).get(lic["skuId"], True)
+                var = tk.BooleanVar(value=kept)
+                box = ctk.CTkCheckBox(
+                    self.licenses_frame, text=lic["name"], variable=var,
+                    text_color=C_TEXT, fg_color=C_SELECTED, hover_color="#1d4ed8",
+                    border_color=C_BORDER, checkbox_height=18, checkbox_width=18,
+                )
+                box.pack(anchor="w", padx=20, pady=2)
+                vars_.append((var, lic))
+            self._license_vars[idx] = vars_
 
     # ------------------------------------------------------------------
     # Run
     # ------------------------------------------------------------------
 
-    def _on_run(self):
-        if self._busy or self._selected_index is None:
-            return
-        info = self._results[self._selected_index]
+    @staticmethod
+    def _resolve_forward(raw: str, domain: str) -> str:
+        """Full address (contains @) is used as-is — external domains OK.
+        A bare alias gets the account's own tenant domain appended."""
+        raw = (raw or "").strip()
+        if not raw:
+            return ""
+        if "@" in raw:
+            return raw.lstrip("@") if raw.startswith("@") else raw
+        return f"{raw}@{domain}"
 
+    def _on_run(self):
+        if self._busy or not self._selected:
+            return
+        targets = []
+        for idx in sorted(self._selected):
+            info = dict(self._results[idx])
+            info["remove_skus"] = [
+                lic for var, lic in self._license_vars.get(idx, []) if var.get()
+            ]
+            targets.append(info)
+
+        forward_raw = self.forward_entry.get().strip() if self.opt_forward.get() else ""
         opts = {
             "suffix": self.opt_suffix.get(),
             "auto_reply": (self.autoreply_box.get("1.0", tk.END).strip()
                            if self.opt_autoreply.get() else ""),
-            "forward_alias": (_normalize_alias(self.forward_entry.get())
-                              if self.opt_forward.get() else ""),
+            "forward_raw": forward_raw,
             "deliver_and_forward": self.opt_deliver.get(),
             "remove_manager": self.opt_manager.get(),
             "remove_groups": self.opt_groups.get(),
             "block_signin": self.opt_block.get(),
             "reset_password": self.opt_password.get(),
-            "remove_skus": [lic for var, lic in self._license_vars if var.get()],
         }
 
         if self.opt_autoreply.get() and not opts["auto_reply"]:
@@ -517,30 +577,33 @@ class OffboardingSection(ctk.CTkFrame):
                 parent=self,
             )
             return
-        if self.opt_forward.get() and not opts["forward_alias"]:
+        if self.opt_forward.get() and not forward_raw:
             messagebox.showwarning(
-                "Forwarding alias missing",
-                "Forwarding is ticked but no alias was entered.",
+                "Forwarding address missing",
+                "Forwarding is ticked but no alias or address was entered.",
                 parent=self,
             )
             return
 
-        lic_names = ", ".join(l["name"] for l in opts["remove_skus"]) or "none"
-        summary = (
-            f"Offboard {info['displayName']} <{info['upn']}>\n"
-            f"Tenant: {info['tenant']} ({info['domain']})\n\n"
-            f"- Display name suffix: {'yes' if opts['suffix'] else 'no'}\n"
-            f"- Auto-reply: {'yes' if opts['auto_reply'] else 'no'}\n"
-            f"- Forwarding: "
-            f"{(opts['forward_alias'] + '@' + info['domain']) if opts['forward_alias'] else 'no'}\n"
-            f"- Remove manager: {'yes' if opts['remove_manager'] else 'no'}\n"
-            f"- Remove all groups: {'yes' if opts['remove_groups'] else 'no'}\n"
-            f"- Block sign-in + mail protocols: {'yes' if opts['block_signin'] else 'no'}\n"
-            f"- Reset password: {'yes' if opts['reset_password'] else 'no'}\n"
-            f"- Remove licenses: {lic_names}\n\n"
-            "This cannot be undone from here. Proceed?"
-        )
-        if not messagebox.askyesno("Confirm offboarding", summary, parent=self):
+        lines = [f"Offboard {len(targets)} account(s):", ""]
+        for info in targets:
+            lic_names = ", ".join(l["name"] for l in info["remove_skus"]) or "none"
+            fwd = self._resolve_forward(forward_raw, info["domain"]) or "no"
+            lines.append(f"• {info['displayName']} <{info['upn']}> — {info['tenant']}")
+            lines.append(f"    forward: {fwd} | remove licenses: {lic_names}")
+        lines += [
+            "",
+            f"Steps for every account: "
+            f"suffix={'yes' if opts['suffix'] else 'no'}, "
+            f"auto-reply={'yes' if opts['auto_reply'] else 'no'}, "
+            f"manager={'remove' if opts['remove_manager'] else 'keep'}, "
+            f"groups={'remove' if opts['remove_groups'] else 'keep'}, "
+            f"block sign-in={'yes' if opts['block_signin'] else 'no'}, "
+            f"password reset={'yes' if opts['reset_password'] else 'no'}",
+            "",
+            "This cannot be undone from here. Proceed?",
+        ]
+        if not messagebox.askyesno("Confirm offboarding", "\n".join(lines), parent=self):
             return
 
         self._busy = True
@@ -548,9 +611,7 @@ class OffboardingSection(ctk.CTkFrame):
         self.copy_btn.configure(state="disabled")
         self.run_btn.configure(state="disabled")
         self.search_btn.configure(state="disabled")
-        self._append_log("", None)
-        self._append_log(f"=== Offboarding {info['displayName']} <{info['upn']}> ===", "head")
-        threading.Thread(target=self._execute_worker, args=(info, opts),
+        threading.Thread(target=self._execute_all_worker, args=(targets, opts),
                          daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -623,7 +684,45 @@ class OffboardingSection(ctk.CTkFrame):
         self.after(0, _store)
         return session, None
 
-    def _execute_worker(self, info: dict, opts: dict):
+    def _execute_all_worker(self, targets: list[dict], opts: dict):
+        """Offboard every selected account in sequence. Exchange sessions and
+        Graph tokens are cached per top-level tenant so accounts in the same
+        tenant share one connection/sign-in."""
+        sessions: dict[str, object] = {}
+        session_errors: dict[str, str] = {}
+        graph_tokens: dict[str, str | None] = {}
+        outcomes: list[tuple[dict, list, str | None]] = []
+
+        for info in targets:
+            self._log_bg("", None)
+            self._log_bg(
+                f"=== Offboarding {info['displayName']} <{info['upn']}> "
+                f"({info['tenant']}) ===", "head",
+            )
+            results, password = self._execute_one(
+                info, opts, sessions, session_errors, graph_tokens
+            )
+            self._write_csv_log(info, results, password is not None)
+            outcomes.append((info, results, password))
+
+        self.after(0, self._show_summary, outcomes)
+
+    def _get_graph_token_cached(self, auth_rto: str, cache: dict) -> str | None:
+        if auth_rto in cache:
+            return cache[auth_rto]
+        token = self.graph_mgr.get_token_silent(auth_rto)
+        if not token:
+            def on_code(code, url):
+                self.after(0, self._show_device_code, code, url)
+            token, err = self.graph_mgr.acquire_token(auth_rto, on_code)
+            self.after(0, self._close_auth_dialog)
+            if not token:
+                self._log_bg(f"[FAIL] Graph sign-in for {auth_rto}: {err}", "fail")
+        cache[auth_rto] = token
+        return token
+
+    def _execute_one(self, info: dict, opts: dict, sessions: dict,
+                     session_errors: dict, graph_tokens: dict):
         results: list[tuple[str, bool, str]] = []  # (label, ok, detail)
         password: str | None = None
 
@@ -639,18 +738,28 @@ class OffboardingSection(ctk.CTkFrame):
         auth_rto = info["auth_rto"]
         upn = info["upn"]
         domain = info["domain"]
+        remove_skus = info.get("remove_skus", [])
+        forward_to = self._resolve_forward(opts.get("forward_raw", ""), domain)
 
         # --- Exchange Online steps ---------------------------------------
         needs_exchange = any([
-            opts["suffix"], opts["auto_reply"], opts["forward_alias"],
+            opts["suffix"], opts["auto_reply"], forward_to,
             opts["remove_manager"], opts["remove_groups"], opts["block_signin"],
         ])
         session = None
         if needs_exchange:
-            session, err = self._ensure_exchange_session(auth_rto)
-            if not session:
-                self._log_bg(f"[FAIL] Exchange connection: {err}", "fail")
-                results.append(("Exchange connection", False, str(err)))
+            if auth_rto in sessions:
+                session = sessions[auth_rto]
+            elif auth_rto in session_errors:
+                results.append(("Exchange connection", False, session_errors[auth_rto]))
+            else:
+                session, err = self._ensure_exchange_session(auth_rto)
+                if session:
+                    sessions[auth_rto] = session
+                else:
+                    session_errors[auth_rto] = str(err)
+                    self._log_bg(f"[FAIL] Exchange connection: {err}", "fail")
+                    results.append(("Exchange connection", False, str(err)))
 
         identity = upn
         dn = None
@@ -671,8 +780,7 @@ class OffboardingSection(ctk.CTkFrame):
             if opts["auto_reply"]:
                 step("Set auto-reply",
                      lambda: session.set_auto_reply(identity, opts["auto_reply"]))
-            if opts["forward_alias"]:
-                forward_to = f"{opts['forward_alias']}@{domain}"
+            if forward_to:
                 step(f"Forward mail to {forward_to}",
                      lambda: session.set_forwarding(
                          identity, forward_to, opts["deliver_and_forward"]))
@@ -692,19 +800,13 @@ class OffboardingSection(ctk.CTkFrame):
                 step("Remove all group memberships", _groups)
 
         # --- Graph steps --------------------------------------------------
-        needs_graph = (opts["block_signin"] or opts["remove_skus"]
+        needs_graph = (opts["block_signin"] or remove_skus
                        or opts["reset_password"])
         graph_token = None
         if needs_graph:
-            graph_token = self.graph_mgr.get_token_silent(auth_rto)
+            graph_token = self._get_graph_token_cached(auth_rto, graph_tokens)
             if not graph_token:
-                def on_code(code, url):
-                    self.after(0, self._show_device_code, code, url)
-                graph_token, err = self.graph_mgr.acquire_token(auth_rto, on_code)
-                self.after(0, self._close_auth_dialog)
-                if not graph_token:
-                    self._log_bg(f"[FAIL] Graph sign-in: {err}", "fail")
-                    results.append(("Microsoft Graph sign-in", False, str(err)))
+                results.append(("Microsoft Graph sign-in", False, "sign-in unavailable"))
 
         if graph_token:
             if opts["block_signin"]:
@@ -713,9 +815,9 @@ class OffboardingSection(ctk.CTkFrame):
                 if session:
                     step("Disable mail protocols (Exchange)",
                          lambda: session.block_protocols(identity))
-            if opts["remove_skus"]:
-                sku_ids = [l["skuId"] for l in opts["remove_skus"]]
-                names = ", ".join(l["name"] for l in opts["remove_skus"])
+            if remove_skus:
+                sku_ids = [l["skuId"] for l in remove_skus]
+                names = ", ".join(l["name"] for l in remove_skus)
                 step(f"Remove licenses: {names}",
                      lambda: self.graph_mgr.remove_licenses(graph_token, upn, sku_ids))
             if opts["reset_password"]:
@@ -728,43 +830,49 @@ class OffboardingSection(ctk.CTkFrame):
                        if label.startswith("Reset password") and ok):
                     password = new_pw
 
-        self._write_csv_log(info, results, password is not None)
-        self.after(0, self._show_summary, info, results, password)
+        return results, password
 
     # ------------------------------------------------------------------
     # Summary + CSV log
     # ------------------------------------------------------------------
 
-    def _show_summary(self, info: dict, results, password: str | None):
+    def _show_summary(self, outcomes: list[tuple[dict, list, str | None]]):
         self._busy = False
         self.run_btn.configure(state="normal")
         self.search_btn.configure(state="normal")
 
-        ok_steps = [(l, d) for l, ok, d in results if ok]
-        failures = [(l, d) for l, ok, d in results if not ok]
+        text_lines: list[str] = []
+        self._append_log("", None)
+        self._append_log(f"SUMMARY — {len(outcomes)} account(s)", "head")
 
-        lines = ["", f"SUMMARY — {info['displayName']} <{info['upn']}>"]
-        self._append_log(lines[1], "head")
-        text_lines = [f"Offboarding summary for {info['displayName']} <{info['upn']}>",
-                      f"Tenant: {info['tenant']} ({info['domain']})"]
-        for label, detail in ok_steps:
-            suffix = f" — {detail}" if detail else ""
-            self._append_log(f"  [ok]   {label}{suffix}", "ok")
-            text_lines.append(f"[ok]   {label}{suffix}")
-        if password:
-            self._append_log(
-                f"  [ok]   New password (copy now — shown once): {password}", "warn"
-            )
-            text_lines.append(f"New password: {password}")
-        for label, detail in failures:
-            self._append_log(f"  [FAIL] {label}: {detail}", "fail")
-            text_lines.append(f"[FAIL] {label}: {detail}")
-        if not failures:
-            self._append_log("  All requested steps completed.", "ok")
-            text_lines.append("All requested steps completed.")
+        for info, results, password in outcomes:
+            header = (f"{info['displayName']} <{info['upn']}> — "
+                      f"{info['tenant']} ({info['domain']})")
+            self._append_log(f"  {header}", "head")
+            text_lines.append(header)
+
+            ok_steps = [(l, d) for l, ok, d in results if ok]
+            failures = [(l, d) for l, ok, d in results if not ok]
+            for label, detail in ok_steps:
+                suffix = f" — {detail}" if detail else ""
+                self._append_log(f"    [ok]   {label}{suffix}", "ok")
+                text_lines.append(f"  [ok]   {label}{suffix}")
+            if password:
+                self._append_log(
+                    f"    [ok]   New password (copy now — shown once): {password}",
+                    "warn",
+                )
+                text_lines.append(f"  New password: {password}")
+            for label, detail in failures:
+                self._append_log(f"    [FAIL] {label}: {detail}", "fail")
+                text_lines.append(f"  [FAIL] {label}: {detail}")
+            if not failures:
+                self._append_log("    All requested steps completed.", "ok")
+                text_lines.append("  All requested steps completed.")
+            text_lines.append("")
+
         self._append_log(f"  Log: {OFFBOARD_LOG_PATH}", "dim")
-
-        self._summary_text = "\n".join(text_lines)
+        self._summary_text = "\n".join(text_lines).strip()
         self.copy_btn.configure(state="normal")
 
     def _copy_summary(self):
