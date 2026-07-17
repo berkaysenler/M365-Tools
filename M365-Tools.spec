@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules
 
-hiddenimports = ['app.ui.main_window', 'app.ui.bulk', 'app.ui.dialogs', 'app.ui.form', 'app.ui.sidebar', 'app.ui.syncro_test', 'app.ui.offboarding', 'app.ui.theme', 'app.exchange', 'app.config_loader', 'app.account', 'app.auth', 'app.syncro', 'student_checker', 'settings_page', 'shared_sessions']
+hiddenimports = ['app.ui.main_window', 'app.ui.bulk', 'app.ui.dialogs', 'app.ui.form', 'app.ui.sidebar', 'app.ui.offboarding', 'app.ui.theme', 'app.ui.syncro_test', 'app.exchange', 'app.config_loader', 'app.account', 'app.auth', 'app.syncro', 'student_checker', 'settings_page', 'shared_sessions']
 hiddenimports += collect_submodules('msal')
 hiddenimports += collect_submodules('customtkinter')
 hiddenimports += collect_submodules('dotenv')
