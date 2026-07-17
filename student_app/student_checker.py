@@ -30,7 +30,7 @@ from app.graph import GraphManager
 from app.ui.dialogs import DeviceCodeDialog
 from setup_wizard import CredentialDialog, _upsert_config_account
 
-APP_ID        = "StudentChecker"
+APP_ID        = "M365Tools_StudentChecker"
 CONFIG_DIR    = APP_DATA_DIR
 ACCOUNTS_FILE = STUDENT_ACCOUNTS_FILE
 APP_DIR       = (
@@ -40,7 +40,9 @@ APP_DIR       = (
 )
 SCRIPT_PATH   = APP_DIR / "check_students.ps1"
 LAST_ID_COLUMNS = ["Date", "Last Student IDs"]
-LAST_ID_RTO_LABELS = {"PV": "PE"}
+# Optional remap of RTO names to the label used in the last-student-ID CSV,
+# e.g. {"OLDNAME": "NEWNAME"}. Leave empty to use RTO names as-is.
+LAST_ID_RTO_LABELS: dict[str, str] = {}
 LAST_IDS_LOCK = threading.Lock()
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 

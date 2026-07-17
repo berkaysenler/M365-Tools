@@ -539,9 +539,9 @@ class MainWindow:
                 )
 
                 # Each row is created through its own tenant's session —
-                # managed RTOs resolve to the managing
-                # tenant's connection. Rows for tenants that are not
-                # connected stay in the pending list.
+                # managed RTOs resolve to the managing tenant's connection.
+                # Rows for tenants that are not connected stay in the
+                # pending list.
                 session_rto = self.token_mgr.get_auth_rto(account.rto)
                 state = self._states.get(session_rto)
                 session = state.session if state and state.connected else None

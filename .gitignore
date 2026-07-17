@@ -20,3 +20,6 @@ _test_cred_setup/
 
 # Local tooling
 .claude/
+
+# Windows artifacts
+desktop.ini

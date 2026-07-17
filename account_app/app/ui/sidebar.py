@@ -16,7 +16,7 @@ class SidebarFrame(tk.Frame):
         self.columnconfigure(0, weight=1)
 
         tk.Label(
-            self, text="M365Tools", bg="#2b2b2b", fg="#ffffff",
+            self, text="M365 Tools", bg="#2b2b2b", fg="#ffffff",
             font=("Segoe UI", 11, "bold"), anchor="w", padx=10, pady=10,
         ).grid(row=0, column=0, sticky="ew")
 
