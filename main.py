@@ -88,6 +88,7 @@ class CombinedM365App(ctk.CTk):
 
         self._add_nav(sidebar, "accounts", "Account Creation")
         self._add_nav(sidebar, "offboarding", "Offboarding")
+        self._add_nav(sidebar, "usermanager", "User Manager")
         self._add_nav(sidebar, "students", "Student Checker")
         self._add_nav(sidebar, "settings", "Settings")
 
@@ -126,6 +127,9 @@ class CombinedM365App(ctk.CTk):
             elif key == "offboarding":
                 from app.ui.offboarding import OffboardingSection
                 section = OffboardingSection(self.content, session_states=self.session_states)
+            elif key == "usermanager":
+                from app.ui.usermanager import UserManagerSection
+                section = UserManagerSection(self.content, session_states=self.session_states)
             elif key == "students":
                 section = StudentCheckerSection(self.content, session_states=self.session_states)
             elif key == "settings":
