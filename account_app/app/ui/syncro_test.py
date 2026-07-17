@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import filedialog, ttk
 
 from app.account import AccountData
+from app.ui.theme import C_DIM, C_FIELD, C_TEXT
 
 
 class SyncroTestFrame(ttk.Frame):
@@ -32,7 +33,7 @@ class SyncroTestFrame(ttk.Frame):
                 "Sends a contact directly to Syncro under the selected RTO's organization. "
                 "Does not create an M365 account."
             ),
-            foreground="#555",
+            foreground=C_DIM,
         ).grid(row=1, column=0, sticky="w", pady=(2, 0))
 
         form = ttk.LabelFrame(self, text="Contact details")
@@ -90,13 +91,13 @@ class SyncroTestFrame(ttk.Frame):
         self.csv_btn.pack(side="left", padx=(8, 0))
 
         self.status_var = tk.StringVar(value="Ready.")
-        ttk.Label(actions, textvariable=self.status_var, foreground="#555").pack(
+        ttk.Label(actions, textvariable=self.status_var, foreground=C_DIM).pack(
             side="left", padx=(12, 0)
         )
         ttk.Label(
             actions,
             text="CSV columns: name, email, mobile, location, title, city",
-            foreground="#888",
+            foreground=C_DIM,
             font=("Segoe UI", 8),
         ).pack(side="right")
 
@@ -104,7 +105,11 @@ class SyncroTestFrame(ttk.Frame):
         output_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(0, 10))
         output_frame.columnconfigure(0, weight=1)
         output_frame.rowconfigure(0, weight=1)
-        self.output = tk.Text(output_frame, height=10, wrap="word", font=("Consolas", 9))
+        self.output = tk.Text(
+            output_frame, height=10, wrap="word", font=("Consolas", 9),
+            bg=C_FIELD, fg=C_TEXT, insertbackground=C_TEXT,
+            relief="flat", highlightthickness=0,
+        )
         self.output.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
 
     def _append(self, text: str):

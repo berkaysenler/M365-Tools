@@ -45,5 +45,4 @@ def render_tags(container, items, text_of, on_remove, bg, fg, vertical=False):
         ).pack(side="left")
 
 
-GROUP_TAG_COLORS = {"bg": "#dbeafe", "fg": "#1e40af"}
-LICENSE_TAG_COLORS = {"bg": "#dcfce7", "fg": "#166534"}
+from app.ui.theme import GROUP_TAG_COLORS, LICENSE_TAG_COLORS  # noqa: F401,E402

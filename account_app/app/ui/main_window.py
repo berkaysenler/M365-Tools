@@ -19,6 +19,7 @@ from app.ui.form import FormFrame
 from app.ui.output import OutputPanel
 from app.ui.sidebar import SidebarFrame
 from app.ui.syncro_test import SyncroTestFrame
+from app.ui.theme import C_BG, apply_dark_theme
 from portable_paths import LOGS_DIR
 
 LOG_PATH = LOGS_DIR / "onboarding_log.csv"
@@ -59,6 +60,8 @@ def _format_result(account, temp_password, status, warnings=None, error=None):
 class MainWindow:
     def __init__(self):
         self.root = tk.Tk()
+        apply_dark_theme(self.root)
+        self.root.configure(bg=C_BG)
         self.root.title("M365 Account Creation")
         self.root.geometry("1280x800")
         self.root.minsize(960, 640)
@@ -98,10 +101,11 @@ class MainWindow:
         self.notebook = ttk.Notebook(self.root)
         self.notebook.grid(row=0, column=1, sticky="nsew", padx=8, pady=8)
 
+        # Fields on top, creation output full-width below.
         single_tab = ttk.Frame(self.notebook)
-        single_tab.columnconfigure(0, weight=3)
-        single_tab.columnconfigure(1, weight=2)
-        single_tab.rowconfigure(0, weight=1)
+        single_tab.columnconfigure(0, weight=1)
+        single_tab.rowconfigure(0, weight=0)
+        single_tab.rowconfigure(1, weight=1)
         self.notebook.add(single_tab, text="Single")
 
         self.form = FormFrame(
@@ -109,11 +113,11 @@ class MainWindow:
             on_change=self._on_form_change,
             on_submit=self._on_submit,
         )
-        self.form.grid(row=0, column=0, sticky="nsew")
+        self.form.grid(row=0, column=0, sticky="new", padx=4, pady=(4, 0))
         self.form.set_enabled(False)
 
         self.single_output = OutputPanel(single_tab)
-        self.single_output.grid(row=0, column=1, sticky="nsew", padx=(8, 4), pady=4)
+        self.single_output.grid(row=1, column=0, sticky="nsew", padx=4, pady=4)
 
         self.bulk = BulkCreationFrame(self.notebook, on_submit=self._on_bulk_submit)
         self.notebook.add(self.bulk, text="Bulk")
@@ -694,7 +698,7 @@ class MainWindow:
 
 class AccountCreationSection(tk.Frame):
     def __init__(self, parent, session_states=None):
-        super().__init__(parent, bg="#f0f0f0")
+        super().__init__(parent, bg=C_BG)
         self.root = self.winfo_toplevel()
 
         self.config = load_config()
@@ -729,10 +733,11 @@ class AccountCreationSection(tk.Frame):
         self.notebook = ttk.Notebook(self)
         self.notebook.grid(row=0, column=1, sticky="nsew", padx=8, pady=8)
 
+        # Fields on top, creation output full-width below.
         single_tab = ttk.Frame(self.notebook)
-        single_tab.columnconfigure(0, weight=3)
-        single_tab.columnconfigure(1, weight=2)
-        single_tab.rowconfigure(0, weight=1)
+        single_tab.columnconfigure(0, weight=1)
+        single_tab.rowconfigure(0, weight=0)
+        single_tab.rowconfigure(1, weight=1)
         self.notebook.add(single_tab, text="Single")
 
         self.form = FormFrame(
@@ -740,11 +745,11 @@ class AccountCreationSection(tk.Frame):
             on_change=self._on_form_change,
             on_submit=self._on_submit,
         )
-        self.form.grid(row=0, column=0, sticky="nsew")
+        self.form.grid(row=0, column=0, sticky="new", padx=4, pady=(4, 0))
         self.form.set_enabled(False)
 
         self.single_output = OutputPanel(single_tab)
-        self.single_output.grid(row=0, column=1, sticky="nsew", padx=(8, 4), pady=4)
+        self.single_output.grid(row=1, column=0, sticky="nsew", padx=4, pady=4)
 
         self.bulk = BulkCreationFrame(self.notebook, on_submit=self._on_bulk_submit)
         self.notebook.add(self.bulk, text="Bulk")

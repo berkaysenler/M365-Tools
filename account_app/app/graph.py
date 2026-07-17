@@ -470,3 +470,118 @@ class GraphManager:
             raise GraphError(
                 f"assignLicense failed (HTTP {status}): {self._err_text(doc)}"
             )
+
+    def remove_licenses(self, token: str, identity: str, sku_ids: list[str]) -> None:
+        """Remove one or more license SKUs from the user in a single call."""
+        status, doc = self._request(
+            "POST",
+            f"/users/{urllib.parse.quote(identity)}/assignLicense",
+            token,
+            body={"addLicenses": [], "removeLicenses": list(sku_ids)},
+        )
+        if status not in (200, 201, 204):
+            raise GraphError(
+                f"assignLicense (remove) failed (HTTP {status}): {self._err_text(doc)}"
+            )
+
+    # ------------------------------------------------------------------
+    # Offboarding
+    # ------------------------------------------------------------------
+
+    def get_user_offboard_info(self, token: str, identity: str) -> dict | None:
+        """User fields the offboarding search needs, or None if not found."""
+        status, doc = self._request(
+            "GET",
+            f"/users/{urllib.parse.quote(identity)}"
+            "?$select=id,displayName,userPrincipalName,mail,accountEnabled,jobTitle,department",
+            token,
+        )
+        if status == 200 and isinstance(doc, dict):
+            return {
+                "id": doc.get("id", ""),
+                "displayName": doc.get("displayName", ""),
+                "upn": doc.get("userPrincipalName", ""),
+                "mail": doc.get("mail") or doc.get("userPrincipalName", ""),
+                "accountEnabled": doc.get("accountEnabled"),
+                "jobTitle": doc.get("jobTitle") or "",
+                "department": doc.get("department") or "",
+            }
+        if status == 404:
+            return None
+        raise GraphError(f"GET user failed (HTTP {status}): {self._err_text(doc)}")
+
+    def get_user_licenses(self, token: str, identity: str) -> list[dict]:
+        """The user's currently assigned licenses with friendly names.
+
+        Each entry: {skuId, skuPartNumber, name}.
+        """
+        status, doc = self._request(
+            "GET",
+            f"/users/{urllib.parse.quote(identity)}/licenseDetails",
+            token,
+        )
+        if status != 200 or not isinstance(doc, dict):
+            raise GraphError(
+                f"GET licenseDetails failed (HTTP {status}): {self._err_text(doc)}"
+            )
+        by_guid, by_string_id = _load_sku_name_maps()
+        licenses = []
+        for item in doc.get("value", []):
+            sku_id = item.get("skuId", "")
+            part = item.get("skuPartNumber", "")
+            name = (
+                by_guid.get(sku_id.lower())
+                or by_string_id.get(part)
+                or SKU_NAMES.get(part, part)
+            )
+            licenses.append({"skuId": sku_id, "skuPartNumber": part, "name": name})
+        licenses.sort(key=lambda l: l["name"].lower())
+        return licenses
+
+    def get_account_enabled(self, token: str, identity: str) -> bool | None:
+        """Return the user's current accountEnabled flag, or None if not found."""
+        status, doc = self._request(
+            "GET",
+            f"/users/{urllib.parse.quote(identity)}?$select=accountEnabled",
+            token,
+        )
+        if status == 200 and isinstance(doc, dict):
+            return doc.get("accountEnabled")
+        if status == 404:
+            return None
+        raise GraphError(f"GET user failed (HTTP {status}): {self._err_text(doc)}")
+
+    def set_account_enabled(self, token: str, identity: str, enabled: bool) -> None:
+        """Set Entra accountEnabled. enabled=False is the real 'Block sign-in' —
+        no Exchange Online cmdlet can write this flag."""
+        status, doc = self._request(
+            "PATCH",
+            f"/users/{urllib.parse.quote(identity)}",
+            token,
+            body={"accountEnabled": enabled},
+        )
+        if status not in (200, 204):
+            raise GraphError(
+                f"PATCH accountEnabled={enabled} failed (HTTP {status}): "
+                f"{self._err_text(doc)}"
+            )
+
+    def reset_password(self, token: str, identity: str, new_password: str,
+                       force_change: bool = False) -> None:
+        """Set a new password on the user. The signed-in admin needs
+        password-reset rights over the target user."""
+        status, doc = self._request(
+            "PATCH",
+            f"/users/{urllib.parse.quote(identity)}",
+            token,
+            body={
+                "passwordProfile": {
+                    "password": new_password,
+                    "forceChangePasswordNextSignIn": force_change,
+                }
+            },
+        )
+        if status not in (200, 204):
+            raise GraphError(
+                f"PATCH passwordProfile failed (HTTP {status}): {self._err_text(doc)}"
+            )

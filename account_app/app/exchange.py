@@ -17,6 +17,7 @@ import threading
 import time
 
 SENTINEL = "##PYDONE##"
+OFFBOARDING_SUFFIX = " --Offboarding"
 _LOG = os.path.join(os.path.dirname(os.path.dirname(__file__)), "debug.log")
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -662,6 +663,213 @@ class ExchangeSession:
             except Exception as exc:
                 errors.append(f"{group.get('displayName', identity)}: {exc}")
         return errors
+
+    # ------------------------------------------------------------------
+    # Offboarding operations
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _safe(value: str) -> str:
+        return (value or "").replace("'", "''")
+
+    def get_mailbox(self, identity: str) -> dict | None:
+        """Return basic mailbox info, or None if no mailbox exists for identity.
+
+        Uses Get-Mailbox -Identity which is an index lookup. Returns the
+        display name, primary SMTP, UPN and distinguished name (needed for
+        the group membership filter).
+        """
+        safe = self._safe(identity)
+        try:
+            rows = self._run_json(
+                f"Get-Mailbox -Identity '{safe}' -ErrorAction Stop | "
+                "Select-Object "
+                "@{n='displayName';e={$_.DisplayName}}, "
+                "@{n='primarySmtp';e={$_.PrimarySmtpAddress}}, "
+                "@{n='upn';e={$_.UserPrincipalName}}, "
+                "@{n='dn';e={$_.DistinguishedName}}",
+                timeout=45,
+            )
+            return rows[0] if rows else None
+        except Exception as exc:
+            _log(f"get_mailbox '{identity}' not found / error: {exc}")
+            return None
+
+    def block_protocols(self, identity: str) -> None:
+        """Defense-in-depth mail-protocol lockout.
+
+        This is NOT the sign-in block: the real block (Entra accountEnabled =
+        false) is done via Microsoft Graph, because no Exchange Online cmdlet
+        can write that flag. Here we additionally disable every client-access
+        protocol and remote PowerShell so the mailbox is sealed even
+        before/independent of the directory block taking effect.
+        """
+        safe = self._safe(identity)
+        self._run(
+            f"Set-User -Identity '{safe}' "
+            "-RemotePowerShellEnabled $false -EXOModuleEnabled $false "
+            "-Confirm:$false",
+            timeout=90,
+        )
+        self._run(
+            f"Set-CASMailbox -Identity '{safe}' "
+            "-OWAEnabled $false -ActiveSyncEnabled $false -PopEnabled $false "
+            "-ImapEnabled $false -MapiEnabled $false -EwsEnabled $false "
+            "-OutlookMobileEnabled $false -UniversalOutlookEnabled $false "
+            "-Confirm:$false",
+            timeout=90,
+        )
+
+    def set_auto_reply(self, identity: str, internal: str, external: str | None = None) -> None:
+        """Enable Automatic Replies (Out of Office) with a custom message.
+
+        external defaults to the internal message when not supplied. External
+        replies are sent to everyone outside the org.
+        """
+        safe = self._safe(identity)
+        internal_safe = self._safe(internal)
+        external_safe = self._safe(external if external is not None else internal)
+        self._run(
+            f"Set-MailboxAutoReplyConfiguration -Identity '{safe}' "
+            "-AutoReplyState Enabled "
+            f"-InternalMessage '{internal_safe}' "
+            f"-ExternalMessage '{external_safe}' "
+            "-ExternalAudience All "
+            "-Confirm:$false",
+            timeout=60,
+        )
+
+    def set_forwarding(self, identity: str, forward_to: str, deliver_and_forward: bool = True) -> None:
+        """Forward this mailbox's mail to another SMTP address."""
+        safe = self._safe(identity)
+        fwd = self._safe(forward_to)
+        deliver = "$true" if deliver_and_forward else "$false"
+        self._run(
+            f"Set-Mailbox -Identity '{safe}' "
+            f"-ForwardingSmtpAddress '{fwd}' "
+            f"-DeliverToMailboxAndForward {deliver} "
+            "-Confirm:$false",
+            timeout=60,
+        )
+
+    def append_display_name_suffix(self, identity: str, current_display: str | None = None) -> str:
+        """Append the offboarding suffix to the display name (idempotent)."""
+        safe = self._safe(identity)
+        if current_display is None:
+            mbx = self.get_mailbox(identity)
+            current_display = (mbx or {}).get("displayName", "") if mbx else ""
+        current_display = current_display or ""
+        if current_display.endswith(OFFBOARDING_SUFFIX):
+            return current_display  # already tagged
+        new_name = f"{current_display}{OFFBOARDING_SUFFIX}"
+        self._run(
+            f"Set-Mailbox -Identity '{safe}' -DisplayName '{self._safe(new_name)}' "
+            "-Confirm:$false",
+            timeout=60,
+        )
+        return new_name
+
+    def remove_manager(self, identity: str) -> None:
+        """Clear the manager attribute on the user object."""
+        safe = self._safe(identity)
+        self._run(f"Set-User -Identity '{safe}' -Manager $null -Confirm:$false", timeout=60)
+
+    def remove_all_groups(self, identity: str, dn: str | None = None, progress=None) -> list[str]:
+        """Remove the user from every group they belong to.
+
+        Returns a list of human-readable result strings (one per group, plus
+        warnings). Covers two group families:
+
+          * Distribution lists + mail-enabled security groups — found in one
+            shot with the directory "Members -eq <DN>" recipient filter, removed
+            via Remove-DistributionGroupMember.
+          * Microsoft 365 (Unified) groups — the Members filter does not cover
+            these, so we enumerate Unified groups and check each membership,
+            removing via Remove-UnifiedGroupLinks. Slower, but offboarding is
+            rare and per-user, so thoroughness wins over speed.
+        """
+        results: list[str] = []
+
+        if dn is None:
+            mbx = self.get_mailbox(identity)
+            dn = (mbx or {}).get("dn") if mbx else None
+        if not dn:
+            return ["Could not resolve the user's directory object; no groups removed."]
+
+        safe_id = self._safe(identity)
+        safe_dn = self._safe(dn)
+
+        # --- Distribution lists & mail-enabled security groups --------------
+        if progress:
+            progress("Finding distribution & security groups...")
+        try:
+            dls = self._run_json(
+                f"Get-Recipient -Filter \"Members -eq '{safe_dn}'\" -ResultSize Unlimited "
+                "-RecipientTypeDetails MailUniversalDistributionGroup,MailUniversalSecurityGroup "
+                "| Select-Object @{n='id';e={$_.PrimarySmtpAddress}}, "
+                "@{n='name';e={$_.DisplayName}}",
+                timeout=120,
+            )
+        except Exception as exc:
+            dls = []
+            results.append(f"WARNING: could not list distribution/security groups: {exc}")
+
+        for grp in dls:
+            gid = grp.get("id", "")
+            gname = grp.get("name", gid)
+            try:
+                self._run(
+                    f"Remove-DistributionGroupMember -Identity '{self._safe(gid)}' "
+                    f"-Member '{safe_id}' -BypassSecurityGroupManagerCheck -Confirm:$false",
+                    timeout=60,
+                )
+                results.append(f"Removed from group: {gname}")
+            except Exception as exc:
+                results.append(f"FAILED to remove from {gname}: {exc}")
+
+        # --- Microsoft 365 (Unified) groups --------------------------------
+        if progress:
+            progress("Checking Microsoft 365 groups...")
+        try:
+            ugroups = self._run_json(
+                "Get-UnifiedGroup -ResultSize Unlimited | "
+                "Select-Object @{n='id';e={$_.PrimarySmtpAddress}}, "
+                "@{n='name';e={$_.DisplayName}}",
+                timeout=300,
+            )
+        except Exception as exc:
+            ugroups = []
+            results.append(f"WARNING: could not list Microsoft 365 groups: {exc}")
+
+        target = (identity or "").lower()
+        for grp in ugroups:
+            gid = grp.get("id", "")
+            gname = grp.get("name", gid)
+            try:
+                members = self._run_json(
+                    f"Get-UnifiedGroupLinks -Identity '{self._safe(gid)}' -LinkType Members "
+                    "-ResultSize Unlimited | "
+                    "Select-Object @{n='smtp';e={$_.PrimarySmtpAddress}}",
+                    timeout=120,
+                )
+            except Exception:
+                continue
+            is_member = any((m.get("smtp") or "").lower() == target for m in members)
+            if not is_member:
+                continue
+            try:
+                self._run(
+                    f"Remove-UnifiedGroupLinks -Identity '{self._safe(gid)}' "
+                    f"-LinkType Members -Links '{safe_id}' -Confirm:$false",
+                    timeout=60,
+                )
+                results.append(f"Removed from Microsoft 365 group: {gname}")
+            except Exception as exc:
+                results.append(f"FAILED to remove from M365 group {gname}: {exc}")
+
+        if not results:
+            results.append("No group memberships found.")
+        return results
 
     def check_students(self, rto: str, student_ids: list[str], group_name: str, progress, should_stop=None) -> None:
         """Run the student checker using this existing EXO session.

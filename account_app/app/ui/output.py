@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from app.ui.theme import C_FIELD, C_TEXT
+
 
 class OutputPanel(ttk.LabelFrame):
     """Read-only creation output panel — same look as the Bulk tab output.
@@ -21,6 +23,11 @@ class OutputPanel(ttk.LabelFrame):
             state="disabled",
             padx=8,
             pady=8,
+            bg=C_FIELD,
+            fg=C_TEXT,
+            insertbackground=C_TEXT,
+            relief="flat",
+            highlightthickness=0,
         )
         self.text.grid(row=0, column=0, sticky="nsew", padx=(6, 0), pady=(4, 0))
         scroll = ttk.Scrollbar(self, orient="vertical", command=self.text.yview)
