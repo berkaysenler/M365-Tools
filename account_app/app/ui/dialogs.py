@@ -2,6 +2,8 @@ import tkinter as tk
 from tkinter import ttk
 import webbrowser
 
+from app.ui.theme import C_BG, C_DIM, C_FIELD, C_SELECTED, C_TEXT
+
 
 class DeviceCodeDialog(tk.Toplevel):
     """Device-code sign-in dialog. Shows the URL + code; closes when MSAL completes."""
@@ -11,6 +13,7 @@ class DeviceCodeDialog(tk.Toplevel):
         self.title("Microsoft Sign In")
         self.geometry("440x230")
         self.resizable(False, False)
+        self.configure(bg=C_BG)
         self.grab_set()
         self.transient(parent)
         self.protocol("WM_DELETE_WINDOW", lambda: None)
@@ -23,7 +26,7 @@ class DeviceCodeDialog(tk.Toplevel):
         ttk.Label(
             self,
             text="Open the link below and enter the code to authenticate.",
-            foreground="#444",
+            foreground=C_DIM,
         ).grid(row=1, column=0, pady=2, padx=20)
 
         ttk.Button(
@@ -39,7 +42,7 @@ class DeviceCodeDialog(tk.Toplevel):
             self,
             text=user_code,
             font=("Consolas", 22, "bold"),
-            foreground="#0078d4",
+            foreground=C_SELECTED,
         ).grid(row=4, column=0, pady=(0, 4))
 
         ttk.Button(
@@ -57,6 +60,7 @@ class AccountCreatedDialog(tk.Toplevel):
         self.title("Account Created")
         self.geometry("560x420")
         self.minsize(480, 320)
+        self.configure(bg=C_BG)
         self.transient(parent)
         self.grab_set()
 
@@ -81,6 +85,11 @@ class AccountCreatedDialog(tk.Toplevel):
             font=("Consolas", 10),
             padx=8,
             pady=8,
+            bg=C_FIELD,
+            fg=C_TEXT,
+            insertbackground=C_TEXT,
+            relief="flat",
+            highlightthickness=0,
         )
         text.grid(row=0, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=text.yview)

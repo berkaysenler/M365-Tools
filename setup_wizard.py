@@ -3,6 +3,7 @@ import tkinter as tk
 import json
 from tkinter import messagebox, ttk
 
+from app.ui.theme import C_BG, C_DIM, C_FIELD, C_TEXT
 from portable_paths import (
     APP_DATA_DIR,
     CONFIG_FILE,
@@ -62,7 +63,11 @@ class SetupWizard(ttk.Frame):
         guide = ttk.LabelFrame(self, text="Getting started", padding=12)
         guide.grid(row=4, column=0, sticky="ew", pady=(0, 12))
         guide.columnconfigure(0, weight=1)
-        self.command_text = tk.Text(guide, height=6, wrap="word", font=("Segoe UI", 9))
+        self.command_text = tk.Text(
+            guide, height=6, wrap="word", font=("Segoe UI", 9),
+            bg=C_FIELD, fg=C_TEXT, insertbackground=C_TEXT,
+            relief="flat", highlightthickness=0,
+        )
         self.command_text.grid(row=0, column=0, sticky="ew")
         self.command_text.insert(
             "1.0",
@@ -75,7 +80,7 @@ class SetupWizard(ttk.Frame):
         self.command_text.configure(state="disabled")
 
         self.status_var = tk.StringVar(value="Create the folders first, then add an account per tenant.")
-        ttk.Label(self, textvariable=self.status_var, foreground="#555").grid(
+        ttk.Label(self, textvariable=self.status_var, foreground=C_DIM).grid(
             row=5, column=0, sticky="ew", pady=(0, 12)
         )
 
@@ -142,6 +147,7 @@ class CredentialDialog(tk.Toplevel):
         self.title("Add account")
         self.geometry("520x380")
         self.resizable(False, False)
+        self.configure(bg=C_BG)
         self.transient(parent)
         self.grab_set()
         self.result = None
@@ -172,7 +178,7 @@ class CredentialDialog(tk.Toplevel):
             entry = ttk.Entry(body, textvariable=self.vars[key])
             entry.grid(row=row, column=1, sticky="ew", pady=6)
             if placeholder:
-                ttk.Label(body, text=placeholder, foreground="#777").grid(row=row, column=2, sticky="w", padx=(8, 0))
+                ttk.Label(body, text=placeholder, foreground=C_DIM).grid(row=row, column=2, sticky="w", padx=(8, 0))
 
         self.vars["rto"].trace_add("write", self._autofill)
 
@@ -183,7 +189,7 @@ class CredentialDialog(tk.Toplevel):
                 "password and MFA. After signing in once you stay connected silently for ~90 days."
             ),
             wraplength=460,
-            foreground="#555",
+            foreground=C_DIM,
         )
         info.grid(row=len(fields), column=0, columnspan=3, sticky="ew", pady=(12, 6))
 

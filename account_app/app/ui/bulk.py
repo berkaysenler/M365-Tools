@@ -9,6 +9,14 @@ from app.account import (
 )
 from app.ui.form import LICENSE_PLACEHOLDER
 from app.ui.group_search import GroupSearch
+from app.ui.theme import (
+    C_BG,
+    C_DIM,
+    C_FIELD,
+    C_STRIPE_EVEN,
+    C_STRIPE_ODD,
+    C_TEXT,
+)
 from app.ui.tkutil import (
     GROUP_TAG_COLORS,
     LICENSE_TAG_COLORS,
@@ -107,7 +115,7 @@ class BulkCreationFrame(ttk.Frame):
         license_combo.bind("<<ComboboxSelected>>", self._on_license_pick)
         self._widgets.append(license_combo)
         self._inputs["license"] = license_combo
-        self._license_tags = tk.Frame(form)
+        self._license_tags = tk.Frame(form, bg=C_BG)
         self._license_tags.grid(row=6, column=0, columnspan=6, sticky="ew", padx=6, pady=(0, 8))
 
         # Groups on their own row: type-to-search picker; each pick shows as
@@ -115,7 +123,7 @@ class BulkCreationFrame(ttk.Frame):
         ttk.Label(form, text="Add Group (type to search)").grid(row=7, column=0, columnspan=6, sticky="w", padx=6)
         self._group_search = GroupSearch(form, on_pick=self._on_group_pick)
         self._group_search.grid(row=8, column=0, columnspan=6, sticky="new", padx=6, pady=(1, 2))
-        self._group_tags = tk.Frame(form)
+        self._group_tags = tk.Frame(form, bg=C_BG)
         self._group_tags.grid(row=9, column=0, columnspan=6, sticky="ew", padx=6, pady=(0, 8))
 
         ttk.Label(
@@ -169,8 +177,8 @@ class BulkCreationFrame(ttk.Frame):
         for col in columns:
             self.tree.heading(col, text=headings[col])
             self.tree.column(col, width=widths[col], anchor="w")
-        self.tree.tag_configure("odd", background="#eef2fb")
-        self.tree.tag_configure("even", background="#ffffff")
+        self.tree.tag_configure("odd", background=C_STRIPE_ODD)
+        self.tree.tag_configure("even", background=C_STRIPE_EVEN)
         self.tree.grid(row=0, column=0, sticky="nsew")
         yscroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
         yscroll.grid(row=0, column=1, sticky="ns")
@@ -199,6 +207,11 @@ class BulkCreationFrame(ttk.Frame):
             wrap="word",
             font=("Consolas", 9),
             state="disabled",
+            bg=C_FIELD,
+            fg=C_TEXT,
+            insertbackground=C_TEXT,
+            relief="flat",
+            highlightthickness=0,
         )
         self.output.grid(row=0, column=0, sticky="nsew")
         out_scroll = ttk.Scrollbar(results_frame, orient="vertical", command=self.output.yview)
@@ -211,7 +224,7 @@ class BulkCreationFrame(ttk.Frame):
         ttk.Button(output_actions, text="Clear Output", command=self.clear_output).pack(side="left", padx=(6, 0))
 
         self._status_var = tk.StringVar(value="Connect to an RTO to enable bulk creation.")
-        ttk.Label(self, textvariable=self._status_var, foreground="#666").grid(
+        ttk.Label(self, textvariable=self._status_var, foreground=C_DIM).grid(
             row=5, column=0, sticky="ew", padx=10, pady=(0, 10)
         )
 
@@ -501,7 +514,10 @@ class BulkCreationFrame(ttk.Frame):
 
         if self._edit_entry is not None:
             self._edit_entry.destroy()
-        entry = tk.Entry(self.tree, borderwidth=1, relief="solid")
+        entry = tk.Entry(
+            self.tree, borderwidth=1, relief="solid",
+            bg=C_FIELD, fg=C_TEXT, insertbackground=C_TEXT,
+        )
         entry.insert(0, current)
         entry.select_range(0, tk.END)
         entry.place(x=x, y=y, width=w, height=h)

@@ -11,19 +11,20 @@ if not getattr(sys, "frozen", False):
     sys.path.insert(0, str(BASE_DIR / "student_app"))
 
 from app.ui.main_window import AccountCreationSection
+from app.ui.theme import (
+    C_BG,
+    C_DIM,
+    C_PANEL,
+    C_PANEL_HOVER,
+    C_SELECTED,
+    C_TEXT,
+    apply_dark_theme,
+)
 from portable_paths import initialize_user_data, is_first_run
 from settings_page import SettingsSection
 from shared_sessions import SharedRTOState
 from setup_wizard import SetupWizard
 from student_checker import StudentCheckerSection
-
-
-C_BG = "#171a24"
-C_PANEL = "#202433"
-C_PANEL_HOVER = "#2a3042"
-C_SELECTED = "#2563eb"
-C_TEXT = "#eef2ff"
-C_DIM = "#9aa3b8"
 
 
 class CombinedM365App(ctk.CTk):
@@ -33,6 +34,7 @@ class CombinedM365App(ctk.CTk):
         self.geometry("1400x860")
         self.minsize(1100, 680)
         self.configure(fg_color=C_BG)
+        apply_dark_theme(self)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
         self._sections: dict[str, tk.Widget] = {}
@@ -85,6 +87,7 @@ class CombinedM365App(ctk.CTk):
         ).pack(fill="x", padx=18, pady=(20, 8))
 
         self._add_nav(sidebar, "accounts", "Account Creation")
+        self._add_nav(sidebar, "offboarding", "Offboarding")
         self._add_nav(sidebar, "students", "Student Checker")
         self._add_nav(sidebar, "settings", "Settings")
 
@@ -120,6 +123,9 @@ class CombinedM365App(ctk.CTk):
         if not section:
             if key == "accounts":
                 section = AccountCreationSection(self.content, session_states=self.session_states)
+            elif key == "offboarding":
+                from app.ui.offboarding import OffboardingSection
+                section = OffboardingSection(self.content, session_states=self.session_states)
             elif key == "students":
                 section = StudentCheckerSection(self.content, session_states=self.session_states)
             elif key == "settings":

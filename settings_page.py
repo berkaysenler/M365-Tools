@@ -2,6 +2,7 @@ import subprocess
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from app.ui.theme import C_DIM
 from portable_paths import APP_DATA_DIR, CONFIG_FILE, LAST_IDS_FILE, LOGS_DIR, STUDENT_ACCOUNTS_FILE, initialize_user_data
 from setup_wizard import CredentialDialog, _upsert_config_account
 
@@ -73,7 +74,7 @@ class SettingsSection(ttk.Frame):
         ttk.Label(syncro, text="Subdomain").grid(row=0, column=0, sticky="w", padx=(0, 12), pady=4)
         self._syncro_subdomain = tk.StringVar()
         ttk.Entry(syncro, textvariable=self._syncro_subdomain).grid(row=0, column=1, sticky="ew", pady=4)
-        ttk.Label(syncro, text="e.g. yourcompany", foreground="#777").grid(row=0, column=2, sticky="w", padx=(8, 0))
+        ttk.Label(syncro, text="e.g. yourcompany", foreground=C_DIM).grid(row=0, column=2, sticky="w", padx=(8, 0))
 
         ttk.Label(syncro, text="API Key").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=4)
         self._syncro_api_key = tk.StringVar()
@@ -89,7 +90,7 @@ class SettingsSection(ttk.Frame):
         self._load_syncro()
 
         self.status_var = tk.StringVar()
-        ttk.Label(self, textvariable=self.status_var, foreground="#555").grid(
+        ttk.Label(self, textvariable=self.status_var, foreground=C_DIM).grid(
             row=5, column=0, sticky="ew"
         )
 

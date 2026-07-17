@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+from app.ui.theme import C_DIM, C_FIELD, C_SELECTED, C_TEXT
+
 
 class GroupSearch(ttk.Frame):
     """Type-to-search picker for fetched tenant groups.
@@ -30,13 +32,15 @@ class GroupSearch(ttk.Frame):
 
         if hint:
             ttk.Label(
-                self, text=hint, foreground="#666", font=("Segoe UI", 8),
+                self, text=hint, foreground=C_DIM, font=("Segoe UI", 8),
                 wraplength=380, justify="left",
             ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
 
         self._list = tk.Listbox(
             self, height=5, exportselection=False,
             font=("Segoe UI", 9), activestyle="none",
+            bg=C_FIELD, fg=C_TEXT, selectbackground=C_SELECTED,
+            selectforeground=C_TEXT, relief="flat", highlightthickness=0,
         )
         self._list.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(4, 0))
         self._list.grid_remove()

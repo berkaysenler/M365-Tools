@@ -18,7 +18,8 @@ python -m PyInstaller `
   --hidden-import app.ui.dialogs `
   --hidden-import app.ui.form `
   --hidden-import app.ui.sidebar `
-  --hidden-import app.ui.summary `
+  --hidden-import app.ui.offboarding `
+  --hidden-import app.ui.theme `
   --hidden-import app.ui.syncro_test `
   --hidden-import app.exchange `
   --hidden-import app.config_loader `

@@ -8,6 +8,7 @@ from app.account import (
     generate_password,
 )
 from app.ui.group_search import GroupSearch
+from app.ui.theme import C_BG, C_DIM
 from app.ui.tkutil import (
     GROUP_TAG_COLORS,
     LICENSE_TAG_COLORS,
@@ -43,141 +44,105 @@ class FormFrame(ttk.Frame):
         self._upn_auto = True
 
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
         self._build()
 
     # ------------------------------------------------------------------
-    # Build
+    # Build — compact 3-column grid: fields on top, output panel lives
+    # below the form (see main_window layout).
     # ------------------------------------------------------------------
 
     def _build(self):
-        canvas = tk.Canvas(self, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
-        self._inner = ttk.Frame(canvas)
-
-        self._inner.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
-        )
-        win_id = canvas.create_window((0, 0), window=self._inner, anchor="nw")
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        canvas.grid(row=0, column=0, sticky="nsew")
-        scrollbar.grid(row=0, column=1, sticky="ns")
-
-        canvas.bind(
-            "<Enter>",
-            lambda e: canvas.bind_all(
-                "<MouseWheel>",
-                lambda ev: canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units"),
-            ),
-        )
-        canvas.bind("<Leave>", lambda e: canvas.unbind_all("<MouseWheel>"))
-
-        f = self._inner
-        f.columnconfigure(0, weight=1)
+        f = self
+        for col in range(3):
+            f.columnconfigure(col, weight=1, uniform="formcol")
 
         self._vars = {}
         self._entries = {}
 
-        r = 0
-        r = self._section(f, "Identity", r)
-        r = self._field(f, "First Name *", "first_name", r)
-        r = self._field(f, "Last Name *", "last_name", r)
-        r = self._combo(f, "Create For", "create_for", [], r)
-        r = self._field(
-            f, "Display Name", "display_name", r,
-            hint="Auto-built as '<RTO prefix> First Last' — edit to override.",
+        ttk.Label(f, text="New Account", font=("Segoe UI", 11, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(10, 0)
         )
-        r = self._field(
-            f, "UPN", "upn", r,
-            hint="Auto-built from first initial + last name + selected domain. Edit if needed.",
+        ttk.Separator(f, orient="horizontal").grid(
+            row=1, column=0, columnspan=3, sticky="ew", padx=10, pady=(4, 6)
         )
 
-        r = self._section(f, "Role", r)
-        r = self._field(f, "Job Title", "title", r)
-        r = self._field(f, "Department", "department", r)
-        r = self._field(f, "Office Location", "office_location", r)
-        r = self._field(
-            f, "Manager", "manager", r,
-            hint="Type the manager's username, e.g. y.ong, or a full UPN.",
-        )
+        self._field(f, "First Name *", "first_name", row=2, col=0)
+        self._field(f, "Last Name *", "last_name", row=2, col=1)
+        self._combo(f, "Create For", "create_for", [], row=2, col=2)
 
-        r = self._section(f, "Access", r)
-        r = self._license_picker(f, r)
-        r = self._field(
-            f, "Start Date (YYYY-MM-DD)", "start_date", r,
-            hint="Recorded in the log only — would feed onboarding workflows via Graph API.",
-        )
-        r = self._group_picker(f, r)
+        self._field(f, "Display Name", "display_name", row=4, col=0)
+        self._field(f, "UPN", "upn", row=4, col=1)
+        self._field(f, "Job Title", "title", row=4, col=2)
 
-        r = self._section(f, "Create Account", r)
-        r = self._password_field(f, r)
+        self._field(f, "Department", "department", row=6, col=0)
+        self._field(f, "Office Location", "office_location", row=6, col=1)
+        self._field(f, "Manager", "manager", row=6, col=2)
+
+        self._license_picker(f, row=8)
+        self._field(f, "Start Date (YYYY-MM-DD)", "start_date", row=8, col=2)
+
+        self._group_picker(f, row=11)
+        self._password_field(f, row=11, col=2)
+
+        ttk.Label(
+            f,
+            text=(
+                "Display name and UPN are built automatically from the name and "
+                "selected domain — edit either to override. Licenses and groups "
+                "load after connecting. Manager can be a username (e.g. j.smith) "
+                "or a full email address."
+            ),
+            foreground=C_DIM, font=("Segoe UI", 8),
+            wraplength=620, justify="left",
+        ).grid(row=14, column=0, columnspan=2, sticky="sw", padx=10, pady=(6, 10))
 
         self._submit_btn = ttk.Button(
-            f, text="Create Account", command=self._submit, state="disabled"
+            f, text="Create Account", style="Accent.TButton",
+            command=self._submit, state="disabled",
         )
-        self._submit_btn.grid(row=r, column=0, sticky="ew", padx=10, pady=(6, 20))
+        self._submit_btn.grid(row=14, column=2, sticky="sew", padx=10, pady=(6, 10))
 
         self._setup_traces()
 
-    def _section(self, parent, title, row):
-        ttk.Label(parent, text=title, font=("Segoe UI", 10, "bold")).grid(
-            row=row, column=0, sticky="w", padx=10, pady=(14, 2)
-        )
-        ttk.Separator(parent, orient="horizontal").grid(
-            row=row + 1, column=0, sticky="ew", padx=10, pady=(0, 6)
-        )
-        return row + 2
-
-    def _field(self, parent, label, key, row, readonly=False, hint=None):
+    def _field(self, parent, label, key, row, col, colspan=1, readonly=False):
         ttk.Label(parent, text=label).grid(
-            row=row, column=0, sticky="w", padx=10, pady=(0, 1)
+            row=row, column=col, columnspan=colspan, sticky="w", padx=10, pady=(4, 1)
         )
         var = tk.StringVar()
         entry = ttk.Entry(
             parent, textvariable=var, state="readonly" if readonly else "normal"
         )
-        entry.grid(row=row + 1, column=0, sticky="ew", padx=10, pady=(0, 0 if hint else 6))
+        entry.grid(
+            row=row + 1, column=col, columnspan=colspan, sticky="ew",
+            padx=10, pady=(0, 4),
+        )
         self._vars[key] = var
         self._entries[key] = entry
-        if hint:
-            ttk.Label(
-                parent, text=hint, foreground="#666", font=("Segoe UI", 8),
-                wraplength=380, justify="left",
-            ).grid(row=row + 2, column=0, sticky="w", padx=10, pady=(1, 6))
-            return row + 3
-        return row + 2
 
-    def _combo(self, parent, label, key, values, row, editable=False, hint=None):
+    def _combo(self, parent, label, key, values, row, col, colspan=1, editable=False):
         ttk.Label(parent, text=label).grid(
-            row=row, column=0, sticky="w", padx=10, pady=(0, 1)
+            row=row, column=col, columnspan=colspan, sticky="w", padx=10, pady=(4, 1)
         )
         var = tk.StringVar()
         combo = ttk.Combobox(
             parent, textvariable=var, values=values,
             state="normal" if editable else "readonly",
         )
-        combo.grid(row=row + 1, column=0, sticky="ew", padx=10, pady=(0, 0 if hint else 6))
+        combo.grid(
+            row=row + 1, column=col, columnspan=colspan, sticky="ew",
+            padx=10, pady=(0, 4),
+        )
         if values:
             combo.set(values[0])
         self._vars[key] = var
         self._entries[key] = combo
-        if hint:
-            ttk.Label(
-                parent, text=hint, foreground="#666", font=("Segoe UI", 8),
-                wraplength=380, justify="left",
-            ).grid(row=row + 2, column=0, sticky="w", padx=10, pady=(1, 6))
-            return row + 3
-        return row + 2
 
-    def _password_field(self, parent, row):
+    def _password_field(self, parent, row, col):
         ttk.Label(parent, text="Temporary Password *").grid(
-            row=row, column=0, sticky="w", padx=10, pady=(0, 1)
+            row=row, column=col, sticky="w", padx=10, pady=(4, 1)
         )
         wrap = ttk.Frame(parent)
-        wrap.grid(row=row + 1, column=0, sticky="ew", padx=10, pady=(0, 0))
+        wrap.grid(row=row + 1, column=col, sticky="ew", padx=10, pady=(0, 4))
         wrap.columnconfigure(0, weight=1)
 
         var = tk.StringVar()
@@ -193,37 +158,27 @@ class FormFrame(ttk.Frame):
         self._entries["temp_password"] = entry
         ttk.Label(
             parent,
-            text="User will not be required to change this on first sign-in.",
-            foreground="#666", font=("Segoe UI", 8),
-        ).grid(row=row + 2, column=0, sticky="w", padx=10, pady=(1, 6))
-        return row + 3
+            text="Not required to change on first sign-in.",
+            foreground=C_DIM, font=("Segoe UI", 8),
+        ).grid(row=row + 2, column=col, sticky="nw", padx=10, pady=(1, 4))
 
     def _license_picker(self, parent, row):
         ttk.Label(parent, text="Licenses").grid(
-            row=row, column=0, sticky="w", padx=10, pady=(0, 1)
+            row=row, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 1)
         )
         var = tk.StringVar(value=LICENSE_PLACEHOLDER)
         combo = ttk.Combobox(
             parent, textvariable=var, values=[LICENSE_PLACEHOLDER],
             state="readonly",
         )
-        combo.grid(row=row + 1, column=0, sticky="ew", padx=10, pady=(0, 0))
+        combo.grid(row=row + 1, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 2))
         combo.bind("<<ComboboxSelected>>", self._on_license_pick)
         self._vars["license"] = var
         self._entries["license"] = combo
-        ttk.Label(
-            parent,
-            text="Pick licenses one at a time — each shows as a tag below. "
-                 "Licenses load after connecting and are assigned via "
-                 "Microsoft Graph right after the mailbox is created.",
-            foreground="#666", font=("Segoe UI", 8),
-            wraplength=380, justify="left",
-        ).grid(row=row + 2, column=0, sticky="w", padx=10, pady=(1, 0))
-        self._license_tags_frame = tk.Frame(parent, bg="#f0f0f0")
+        self._license_tags_frame = tk.Frame(parent, bg=C_BG)
         self._license_tags_frame.grid(
-            row=row + 3, column=0, sticky="ew", padx=10, pady=(2, 6)
+            row=row + 2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 4)
         )
-        return row + 4
 
     def _on_license_pick(self, _event=None):
         label = self._vars["license"].get()
@@ -263,27 +218,21 @@ class FormFrame(ttk.Frame):
 
     def _group_picker(self, parent, row):
         ttk.Label(parent, text="Distribution Groups").grid(
-            row=row, column=0, sticky="w", padx=10, pady=(0, 1)
+            row=row, column=0, columnspan=2, sticky="w", padx=10, pady=(4, 1)
         )
 
         frame = ttk.Frame(parent)
-        frame.grid(row=row + 1, column=0, sticky="ew", padx=10, pady=(0, 6))
+        frame.grid(row=row + 1, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 2))
         frame.columnconfigure(0, weight=1)
 
-        self._group_search = GroupSearch(
-            frame,
-            on_pick=self._add_group,
-            hint="Type to search the tenant's groups (loaded after connect) — "
-                 "click a match or press Enter for the top one. Unknown names "
-                 "are added as typed.",
-        )
+        self._group_search = GroupSearch(frame, on_pick=self._add_group)
         self._group_search.grid(row=0, column=0, sticky="ew")
 
         # Selected tags
-        self._tags_frame = tk.Frame(frame, bg="#f0f0f0")
-        self._tags_frame.grid(row=1, column=0, sticky="ew", pady=(6, 0))
-
-        return row + 2
+        self._tags_frame = tk.Frame(parent, bg=C_BG)
+        self._tags_frame.grid(
+            row=row + 2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 4)
+        )
 
     def set_group_options(self, options):
         """Fetched tenant groups: [{id, displayName, mail, recipientType}]."""
