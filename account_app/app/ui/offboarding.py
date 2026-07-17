@@ -115,7 +115,7 @@ class OffboardingSection(ctk.CTkFrame):
 
     def _build(self):
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(3, weight=1)
+        self.grid_rowconfigure(2, weight=1)
 
         # ---- Header ----------------------------------------------------
         header = ctk.CTkFrame(self, fg_color="transparent")
@@ -165,11 +165,12 @@ class OffboardingSection(ctk.CTkFrame):
                                 padx=10, pady=(0, 10))
         self.results_frame.grid_columnconfigure(0, weight=1)
 
-        # ---- Options card ----------------------------------------------
+        # ---- Options card (left: steps, right: licenses + progress log) --
         options_card = ctk.CTkFrame(self, fg_color=C_PANEL, corner_radius=10)
-        options_card.grid(row=2, column=0, sticky="ew", padx=16, pady=6)
+        options_card.grid(row=2, column=0, sticky="nsew", padx=16, pady=(6, 14))
         options_card.grid_columnconfigure(0, weight=3)
         options_card.grid_columnconfigure(1, weight=2)
+        options_card.grid_rowconfigure(0, weight=1)
 
         left = ctk.CTkFrame(options_card, fg_color="transparent")
         left.grid(row=0, column=0, sticky="nsew", padx=(14, 8), pady=10)
@@ -233,20 +234,36 @@ class OffboardingSection(ctk.CTkFrame):
         right = ctk.CTkFrame(options_card, fg_color="transparent")
         right.grid(row=0, column=1, sticky="nsew", padx=(8, 14), pady=10)
         right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(3, weight=1)
         ctk.CTkLabel(
             right, text="Licenses to remove, per selected account (untick any to keep):",
             text_color=C_TEXT, anchor="w",
         ).grid(row=0, column=0, sticky="ew")
         self.licenses_frame = ctk.CTkScrollableFrame(
-            right, fg_color=C_FIELD, height=150,
+            right, fg_color=C_FIELD, height=140,
         )
-        self.licenses_frame.grid(row=1, column=0, sticky="nsew", pady=(4, 0))
+        self.licenses_frame.grid(row=1, column=0, sticky="ew", pady=(4, 0))
         self._license_placeholder = ctk.CTkLabel(
             self.licenses_frame,
             text="Select one or more accounts above to load their licenses.",
             text_color=C_DIM,
         )
         self._license_placeholder.pack(anchor="w", padx=8, pady=8)
+
+        ctk.CTkLabel(
+            right, text="Progress:", text_color=C_TEXT, anchor="w",
+        ).grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        self.log = tk.Text(
+            right, wrap="word", font=FONT_MONO, state="disabled", height=8,
+            bg=C_FIELD, fg=C_TEXT, insertbackground=C_TEXT,
+            relief="flat", highlightthickness=0, padx=10, pady=8,
+        )
+        self.log.grid(row=3, column=0, sticky="nsew", pady=(4, 0))
+        for tag, color in (
+            ("ok", C_OK), ("fail", C_ERR), ("warn", C_WARN),
+            ("dim", C_DIM), ("head", C_SELECTED),
+        ):
+            self.log.tag_configure(tag, foreground=color)
 
         run_row = ctk.CTkFrame(options_card, fg_color="transparent")
         run_row.grid(row=1, column=0, columnspan=2, sticky="ew", padx=14, pady=(0, 12))
@@ -267,24 +284,6 @@ class OffboardingSection(ctk.CTkFrame):
             border_color=C_BORDER, state="disabled", command=self._copy_summary,
         )
         self.copy_btn.pack(side="right")
-
-        # ---- Progress log ----------------------------------------------
-        log_card = ctk.CTkFrame(self, fg_color=C_PANEL, corner_radius=10)
-        log_card.grid(row=3, column=0, sticky="nsew", padx=16, pady=(6, 14))
-        log_card.grid_columnconfigure(0, weight=1)
-        log_card.grid_rowconfigure(0, weight=1)
-
-        self.log = tk.Text(
-            log_card, wrap="word", font=FONT_MONO, state="disabled",
-            bg=C_FIELD, fg=C_TEXT, insertbackground=C_TEXT,
-            relief="flat", highlightthickness=0, padx=10, pady=8,
-        )
-        self.log.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
-        for tag, color in (
-            ("ok", C_OK), ("fail", C_ERR), ("warn", C_WARN),
-            ("dim", C_DIM), ("head", C_SELECTED),
-        ):
-            self.log.tag_configure(tag, foreground=color)
 
     # ------------------------------------------------------------------
     # Logging helpers (UI thread only)

@@ -92,11 +92,12 @@ class UserManagerSection(ctk.CTkFrame):
             row=0, column=0, padx=(14, 6), pady=12, sticky="w"
         )
         rtos = list(self.config.keys())
-        self.tenant_combo = ctk.CTkComboBox(
-            card, values=rtos or ["—"], width=130, state="readonly",
-            fg_color=C_FIELD, border_color=C_BORDER, text_color=C_TEXT,
-            button_color=C_PANEL, dropdown_fg_color=C_PANEL,
-            dropdown_text_color=C_TEXT, dropdown_hover_color="#2a3042",
+        self.tenant_combo = ctk.CTkOptionMenu(
+            card, values=rtos or ["—"], width=150, height=30,
+            fg_color=C_FIELD, button_color="#2a3042",
+            button_hover_color=C_SELECTED, text_color=C_TEXT,
+            dropdown_fg_color=C_PANEL, dropdown_text_color=C_TEXT,
+            dropdown_hover_color="#2a3042",
         )
         if rtos:
             self.tenant_combo.set(rtos[0])
@@ -128,9 +129,9 @@ class UserManagerSection(ctk.CTkFrame):
         # ---- Profile card -----------------------------------------------
         profile_card = ctk.CTkFrame(self, fg_color=C_PANEL, corner_radius=10)
         profile_card.grid(row=2, column=0, sticky="nsew", padx=16, pady=(6, 14))
-        profile_card.grid_columnconfigure(0, weight=1)
-        profile_card.grid_columnconfigure(1, weight=1)
-        profile_card.grid_rowconfigure(6, weight=1)
+        profile_card.grid_columnconfigure(0, weight=1, uniform="profcol")
+        profile_card.grid_columnconfigure(1, weight=1, uniform="profcol")
+        profile_card.grid_rowconfigure(8, weight=1)
 
         self.profile_title = ctk.CTkLabel(
             profile_card, text="No user loaded — search and select above.",
@@ -144,25 +145,30 @@ class UserManagerSection(ctk.CTkFrame):
         self.profile_info.grid(row=1, column=0, columnspan=2, sticky="ew",
                                padx=14, pady=(0, 8))
 
-        # Editable fields, two columns
+        # Editable fields, two uniform columns (the odd last field spans both)
         for i, (key, label) in enumerate(_EDIT_FIELDS):
             row, col = divmod(i, 2)
+            last_and_odd = (i == len(_EDIT_FIELDS) - 1 and col == 0)
             holder = ctk.CTkFrame(profile_card, fg_color="transparent")
-            holder.grid(row=2 + row, column=col, sticky="ew",
-                        padx=14, pady=4)
-            holder.grid_columnconfigure(0, weight=1)
-            ctk.CTkLabel(holder, text=label, text_color=C_TEXT, anchor="w").grid(
-                row=0, column=0, sticky="ew"
+            holder.grid(
+                row=2 + row, column=col,
+                columnspan=2 if last_and_odd else 1,
+                sticky="ew", padx=14, pady=(2, 6),
             )
+            holder.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(
+                holder, text=label, text_color=C_DIM, anchor="w",
+                font=ctk.CTkFont(size=11),
+            ).grid(row=0, column=0, sticky="ew", pady=(0, 1))
             entry = ctk.CTkEntry(
                 holder, fg_color=C_FIELD, border_color=C_BORDER,
-                text_color=C_TEXT, state="disabled",
+                text_color=C_TEXT, state="disabled", height=30,
             )
             entry.grid(row=1, column=0, sticky="ew")
             self._entries[key] = entry
 
         buttons = ctk.CTkFrame(profile_card, fg_color="transparent")
-        buttons.grid(row=5, column=0, columnspan=2, sticky="ew", padx=14, pady=(8, 4))
+        buttons.grid(row=7, column=0, columnspan=2, sticky="ew", padx=14, pady=(10, 4))
         self.save_btn = ctk.CTkButton(
             buttons, text="Save changes", width=140,
             fg_color=C_SELECTED, hover_color="#1d4ed8",
@@ -183,7 +189,7 @@ class UserManagerSection(ctk.CTkFrame):
             bg=C_FIELD, fg=C_TEXT, insertbackground=C_TEXT,
             relief="flat", highlightthickness=0, padx=10, pady=6,
         )
-        self.log.grid(row=6, column=0, columnspan=2, sticky="nsew",
+        self.log.grid(row=8, column=0, columnspan=2, sticky="nsew",
                       padx=14, pady=(4, 12))
         for tag, color in (("ok", C_OK), ("fail", C_ERR), ("warn", C_WARN),
                            ("dim", C_DIM), ("head", C_SELECTED)):
