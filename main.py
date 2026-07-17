@@ -29,7 +29,7 @@ C_DIM = "#9aa3b8"
 class CombinedM365App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("VCIT M365 Tools")
+        self.title("M365 Tools")
         self.geometry("1400x860")
         self.minsize(1100, 680)
         self.configure(fg_color=C_BG)

@@ -1,6 +1,6 @@
 Set-Location -Path $PSScriptRoot
 
-Get-Process -Name "VCIT-M365-Tools" -ErrorAction SilentlyContinue | Stop-Process -Force
+Get-Process -Name "M365-Tools" -ErrorAction SilentlyContinue | Stop-Process -Force
 
 python -m pip install -r requirements.txt
 python -m pip install pyinstaller
@@ -10,7 +10,7 @@ python -m PyInstaller `
   --clean `
   --windowed `
   --onefile `
-  --name "VCIT-M365-Tools" `
+  --name "M365-Tools" `
   --paths "account_app" `
   --paths "student_app" `
   --hidden-import app.ui.main_window `

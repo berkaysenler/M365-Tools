@@ -34,7 +34,7 @@ class TokenManager:
         self._apps: dict[str, msal.PublicClientApplication] = {}
         self._caches: dict[str, msal.SerializableTokenCache] = {}
 
-        # managed_rto -> managing_rto (e.g. AIBT -> VC)
+        # managed_rto -> managing_rto
         self._delegate: dict[str, str] = {}
         for rto, cfg in config.items():
             for managed in cfg.get("manages", []):

@@ -28,7 +28,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='VCIT-M365-Tools',
+    name='M365-Tools',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

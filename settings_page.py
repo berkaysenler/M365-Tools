@@ -73,7 +73,7 @@ class SettingsSection(ttk.Frame):
         ttk.Label(syncro, text="Subdomain").grid(row=0, column=0, sticky="w", padx=(0, 12), pady=4)
         self._syncro_subdomain = tk.StringVar()
         ttk.Entry(syncro, textvariable=self._syncro_subdomain).grid(row=0, column=1, sticky="ew", pady=4)
-        ttk.Label(syncro, text="e.g. vconsultancy", foreground="#777").grid(row=0, column=2, sticky="w", padx=(8, 0))
+        ttk.Label(syncro, text="e.g. yourcompany", foreground="#777").grid(row=0, column=2, sticky="w", padx=(8, 0))
 
         ttk.Label(syncro, text="API Key").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=4)
         self._syncro_api_key = tk.StringVar()

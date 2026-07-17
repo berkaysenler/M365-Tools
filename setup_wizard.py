@@ -140,7 +140,7 @@ class CredentialDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Add account")
-        self.geometry("520x380")
+        self.geometry("540x460")
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
@@ -157,15 +157,17 @@ class CredentialDialog(tk.Toplevel):
             "prefix": tk.StringVar(),
             "default_group": tk.StringVar(),
             "syncro_org_id": tk.StringVar(),
+            "manages": tk.StringVar(),
         }
 
         fields = [
-            ("RTO name", "rto", "e.g. NPA"),
+            ("RTO name", "rto", "e.g. ORG1"),
             ("Admin email", "admin", "admin@example.com"),
             ("Domain", "domain", "example.edu.au"),
-            ("Prefix", "prefix", "e.g. NPA"),
+            ("Prefix", "prefix", "e.g. ORG1"),
             ("Default group", "default_group", "e.g. All Students"),
             ("Syncro org ID", "syncro_org_id", "optional"),
+            ("Manages", "manages", "optional, e.g. ORG2, ORG3"),
         ]
         for row, (label, key, placeholder) in enumerate(fields):
             ttk.Label(body, text=label).grid(row=row, column=0, sticky="w", padx=(0, 10), pady=6)
@@ -180,7 +182,10 @@ class CredentialDialog(tk.Toplevel):
             body,
             text=(
                 "Sign-in uses a one-time device code per tenant — Microsoft handles the "
-                "password and MFA. After signing in once you stay connected silently for ~90 days."
+                "password and MFA. After signing in once you stay connected silently for ~90 days.\n\n"
+                "Manages: if this tenant's admin account also administers other tenants, "
+                "list their RTO names (comma-separated). Those tenants will sign in through "
+                "this tenant's connection instead of needing their own."
             ),
             wraplength=460,
             foreground="#555",
@@ -229,6 +234,12 @@ def _upsert_config_account(data: dict):
             entry["syncro_org_id"] = data["syncro_org_id"]
     entry.setdefault("syncro_org_id", entry.get("syncro_org_id", ""))
     entry.setdefault("notification_recipients", entry.get("notification_recipients", []))
+    if "manages" in data:
+        managed = [m.strip().upper() for m in data["manages"].split(",") if m.strip()]
+        if managed:
+            entry["manages"] = managed
+        else:
+            entry.pop("manages", None)
     config[rto] = entry
     CONFIG_FILE.write_text(json.dumps(config, indent=2), encoding="utf-8")
     _upsert_student_account(data)

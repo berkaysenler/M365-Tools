@@ -5,10 +5,9 @@ from pathlib import Path
 
 
 APP_NAME = "M365Tools"
-VENDOR_NAME = "VCIT"
 
 APP_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / VENDOR_NAME / APP_NAME
+APP_DATA_DIR = Path(os.environ.get("APPDATA", Path.home())) / APP_NAME
 CONFIG_FILE = APP_DATA_DIR / "config.json"
 STUDENT_ACCOUNTS_FILE = APP_DATA_DIR / "student_accounts.json"
 LOGS_DIR = APP_DATA_DIR / "logs"

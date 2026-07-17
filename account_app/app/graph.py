@@ -74,7 +74,7 @@ def _load_sku_name_maps() -> tuple[dict, dict]:
         )
         if stale:
             req = urllib.request.Request(
-                SKU_NAMES_URL, headers={"User-Agent": "VCIT-M365-Tools"}
+                SKU_NAMES_URL, headers={"User-Agent": "M365-Tools"}
             )
             with urllib.request.urlopen(req, timeout=20) as resp:
                 data = resp.read()
@@ -198,7 +198,7 @@ class GraphManager:
         self._caches: dict[str, msal.SerializableTokenCache] = {}
         self._lock = threading.Lock()
 
-        # managed_rto -> managing_rto (e.g. AIBT -> VC), same as TokenManager.
+        # managed_rto -> managing_rto, same as TokenManager.
         self._delegate: dict[str, str] = {}
         for rto, cfg in config.items():
             for managed in cfg.get("manages", []):
