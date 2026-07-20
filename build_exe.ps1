@@ -20,6 +20,8 @@ python -m PyInstaller `
   --hidden-import app.ui.sidebar `
   --hidden-import app.ui.offboarding `
   --hidden-import app.ui.usermanager `
+  --hidden-import app.ui.hrtasks `
+  --hidden-import app.hr_feed `
   --hidden-import app.ui.theme `
   --hidden-import app.ui.syncro_test `
   --hidden-import app.exchange `
