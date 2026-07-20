@@ -156,7 +156,8 @@ class BulkCreationFrame(ttk.Frame):
         style.configure("Pending.Treeview", rowheight=26, font=("Segoe UI", 9))
         style.configure("Pending.Treeview.Heading", font=("Segoe UI", 9, "bold"))
 
-        columns = ("name", "upn", "rto", "title", "license", "groups", "password")
+        columns = ("name", "upn", "rto", "title", "department", "manager",
+                   "license", "groups", "password")
         self.tree = ttk.Treeview(
             list_frame, columns=columns, show="headings", height=6,
             style="Pending.Treeview",
@@ -166,23 +167,27 @@ class BulkCreationFrame(ttk.Frame):
             "upn": "UPN",
             "rto": "RTO",
             "title": "Job Title",
+            "department": "Department",
+            "manager": "Manager",
             "license": "License",
             "groups": "Groups",
             "password": "Password",
         }
         widths = {
-            "name": 190, "upn": 210, "rto": 60, "title": 130,
-            "license": 170, "groups": 190, "password": 120,
+            "name": 190, "upn": 210, "rto": 60, "title": 130, "department": 140,
+            "manager": 200, "license": 170, "groups": 190, "password": 120,
         }
         for col in columns:
             self.tree.heading(col, text=headings[col])
-            self.tree.column(col, width=widths[col], anchor="w")
+            self.tree.column(col, width=widths[col], anchor="w", stretch=False)
         self.tree.tag_configure("odd", background=C_STRIPE_ODD)
         self.tree.tag_configure("even", background=C_STRIPE_EVEN)
         self.tree.grid(row=0, column=0, sticky="nsew")
         yscroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
         yscroll.grid(row=0, column=1, sticky="ns")
-        self.tree.configure(yscrollcommand=yscroll.set)
+        xscroll = ttk.Scrollbar(list_frame, orient="horizontal", command=self.tree.xview)
+        xscroll.grid(row=1, column=0, sticky="ew")
+        self.tree.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
         self.tree.bind("<Double-Button-1>", self._on_tree_double_click)
         self._edit_entry: tk.Entry | None = None
 
@@ -483,6 +488,8 @@ class BulkCreationFrame(ttk.Frame):
                 acc.upn,
                 acc.rto,
                 acc.title,
+                acc.department,
+                acc.manager_upn or acc.manager_display,
                 "; ".join(l["name"] for l in acc.licenses) or "—",
                 "; ".join(g["displayName"] for g in acc.distribution_groups),
                 password,
@@ -493,12 +500,69 @@ class BulkCreationFrame(ttk.Frame):
         self._refresh_create_state()
         self._status_var.set(f"{len(self._rows)} account(s) ready to create.")
 
+    def add_prefilled_rows(self, entries: list[dict]) -> tuple[int, int]:
+        """Queue ready-made rows from the HR Tasks section — one per tenant
+        the new staff member needs an account in. Each entry carries its own
+        rto/domain, so rows can span tenants that are not even connected
+        yet; Create All resolves sessions per row and leaves rows for
+        unconnected tenants pending. Returns (added, skipped_duplicates).
+        """
+        added = skipped = 0
+        for entry in entries:
+            first = entry.get("first_name", "").strip()
+            last = entry.get("last_name", "").strip()
+            domain = entry.get("domain", "").strip()
+            if not first or not last or not domain:
+                continue
+            acc = AccountData()
+            acc.first_name = first
+            acc.last_name = last
+            acc.rto = entry.get("rto", "")
+            acc.domain = domain
+            acc.display_name = generate_display_name(
+                first, last, entry.get("prefix", "")
+            )
+            acc.upn = generate_upn(first, last, domain)
+            acc.title = entry.get("title", "")
+            acc.department = entry.get("department", "")
+            acc.office_location = entry.get("office_location", "")
+            acc.manager_display = entry.get("manager_display", "")
+            acc.manager_upn = entry.get("manager_upn", "")
+            acc.start_date = entry.get("start_date", "")
+            if not acc.upn or any(
+                existing.upn.lower() == acc.upn.lower() for existing, _ in self._rows
+            ):
+                skipped += 1
+                continue
+            password = generate_password()
+            self._rows.append((acc, password))
+            self.tree.insert(
+                "", "end",
+                values=(
+                    acc.display_name, acc.upn, acc.rto, acc.title,
+                    acc.department,
+                    acc.manager_upn or acc.manager_display,
+                    "—", "", password,
+                ),
+            )
+            added += 1
+        if added:
+            self._restripe()
+            self._refresh_create_state()
+            self._status_var.set(
+                f"{len(self._rows)} account(s) ready — connect each row's "
+                "tenant, edit anything by double-click, then Create All."
+            )
+        return added, skipped
+
     # Column id -> (tree column name, AccountData attribute or None for password)
     _EDITABLE_TEXT_COLUMNS = {
         "#1": ("name", "display_name"),
         "#2": ("upn", "upn"),
         "#4": ("title", "title"),
-        "#7": ("password", None),
+        "#5": ("department", "department"),
+        "#6": ("manager", "manager_upn"),
+        "#9": ("password", None),
     }
 
     def _on_tree_double_click(self, event):
@@ -520,9 +584,9 @@ class BulkCreationFrame(ttk.Frame):
         if column in self._EDITABLE_TEXT_COLUMNS:
             col_name, attr = self._EDITABLE_TEXT_COLUMNS[column]
             self._edit_text_cell(index, item_id, column, col_name, attr)
-        elif column == "#5":
+        elif column == "#7":
             self._edit_row_licenses(index, item_id)
-        elif column == "#6":
+        elif column == "#8":
             self._edit_row_groups(index, item_id)
         elif column == "#3":
             self._status_var.set(
@@ -555,10 +619,22 @@ class BulkCreationFrame(ttk.Frame):
             self._edit_entry = None
             if new_value == current:
                 return
-            # Job Title may be cleared; the others must not be empty.
-            if not new_value and col_name != "title":
+            # Job Title, Department and Manager may be cleared; the others
+            # must not be empty.
+            if not new_value and col_name not in ("title", "department", "manager"):
                 return
             acc, password = self._rows[index]
+            if col_name == "manager":
+                # Same convention as the add-form: bare alias gets the row's
+                # domain appended; empty clears the manager.
+                resolved = (
+                    new_value if ("@" in new_value or not new_value)
+                    else f"{new_value}@{acc.domain}"
+                )
+                acc.manager_upn = resolved
+                acc.manager_display = resolved
+                self.tree.set(item_id, col_name, resolved)
+                return
             if col_name == "upn":
                 if "@" not in new_value:
                     self._status_var.set("UPN must be a full address (user@domain).")

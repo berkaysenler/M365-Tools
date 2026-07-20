@@ -41,6 +41,7 @@ class CombinedM365App(ctk.CTk):
         self._nav_buttons: dict[str, ctk.CTkButton] = {}
         self._active_section = ""
         self.session_states: dict[str, SharedRTOState] = {}
+        self._hr_graph = None  # lazy GraphManager for the background HR poll
 
         if is_first_run():
             self._build_setup()
@@ -48,6 +49,7 @@ class CombinedM365App(ctk.CTk):
             initialize_user_data(copy_default_config=False)
             self._build_shell()
             self._show_section("accounts")
+            self.after(3000, self._start_hr_poll)
 
     def _build_setup(self):
         self.grid_columnconfigure(0, weight=1)
@@ -61,6 +63,7 @@ class CombinedM365App(ctk.CTk):
         self.grid_columnconfigure(1, weight=1)
         self._build_shell()
         self._show_section("accounts")
+        self.after(3000, self._start_hr_poll)
 
     def _build_shell(self):
         self.grid_columnconfigure(1, weight=1)
@@ -89,6 +92,7 @@ class CombinedM365App(ctk.CTk):
         self._add_nav(sidebar, "accounts", "Account Creation")
         self._add_nav(sidebar, "offboarding", "Offboarding")
         self._add_nav(sidebar, "usermanager", "User Manager")
+        self._add_nav(sidebar, "hrtasks", "HR Tasks")
         self._add_nav(sidebar, "students", "Student Checker")
         self._add_nav(sidebar, "settings", "Settings")
 
@@ -130,6 +134,16 @@ class CombinedM365App(ctk.CTk):
             elif key == "usermanager":
                 from app.ui.usermanager import UserManagerSection
                 section = UserManagerSection(self.content, session_states=self.session_states)
+            elif key == "hrtasks":
+                from app.ui.hrtasks import HRTasksSection
+                section = HRTasksSection(
+                    self.content,
+                    session_states=self.session_states,
+                    on_badge=self._set_hr_badge,
+                    on_prefill=self._prefill_account,
+                    on_offboard=self._offboard_from_task,
+                    on_bulk=self._bulk_from_task,
+                )
             elif key == "students":
                 section = StudentCheckerSection(self.content, session_states=self.session_states)
             elif key == "settings":
@@ -148,6 +162,58 @@ class CombinedM365App(ctk.CTk):
         for key, btn in self._nav_buttons.items():
             selected = key == self._active_section
             btn.configure(fg_color=C_SELECTED if selected else "transparent")
+
+    # ------------------------------------------------------------------
+    # HR Tasks feed — sidebar badge + prefill into Account Creation
+    # ------------------------------------------------------------------
+
+    def _set_hr_badge(self, count: int):
+        btn = self._nav_buttons.get("hrtasks")
+        if btn:
+            btn.configure(text=f"HR Tasks ({count})" if count else "HR Tasks")
+
+    def _prefill_account(self, fields: dict):
+        self._show_section("accounts")
+        self._sections["accounts"].form.prefill(fields)
+
+    def _offboard_from_task(self, email: str):
+        self._show_section("offboarding")
+        self._sections["offboarding"].search_alias(email)
+
+    def _bulk_from_task(self, entries: list[dict]):
+        self._show_section("accounts")
+        section = self._sections["accounts"]
+        section.notebook.select(section.bulk)
+        section.bulk.add_prefilled_rows(entries)
+
+    def _start_hr_poll(self):
+        from app import hr_feed
+
+        cfg = hr_feed.load_feed_config()
+        minutes = cfg.get("poll_minutes", 5) if cfg else 5
+
+        def _run():
+            feed_cfg = hr_feed.load_feed_config()
+            if not feed_cfg:
+                return
+            # Silent-token only in the background — never pop a sign-in
+            # dialog unprompted. The HR Tasks section handles interactive
+            # sign-in when opened.
+            if self._hr_graph is None:
+                from app.config_loader import load_config
+                from app.graph import GraphManager
+                self._hr_graph = GraphManager(load_config())
+            token = self._hr_graph.get_token_silent(feed_cfg["rto"])
+            if not token:
+                return
+            try:
+                pending = hr_feed.count_pending(token, feed_cfg)
+            except Exception:
+                return
+            self.after(0, lambda: self._set_hr_badge(pending))
+
+        threading.Thread(target=_run, daemon=True).start()
+        self.after(max(1, minutes) * 60_000, self._start_hr_poll)
 
     def _on_close(self):
         for state in self.session_states.values():

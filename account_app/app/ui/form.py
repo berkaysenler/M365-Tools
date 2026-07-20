@@ -79,7 +79,6 @@ class FormFrame(ttk.Frame):
         self._field(f, "Manager", "manager", row=6, col=2)
 
         self._license_picker(f, row=8)
-        self._field(f, "Start Date (YYYY-MM-DD)", "start_date", row=8, col=2)
 
         self._group_picker(f, row=11)
         self._password_field(f, row=11, col=2)
@@ -265,7 +264,7 @@ class FormFrame(ttk.Frame):
 
         for key in [
             "title", "department", "office_location",
-            "manager", "start_date", "temp_password",
+            "manager", "temp_password",
         ]:
             self._vars[key].trace_add("write", lambda *a: self._emit_change())
 
@@ -375,7 +374,6 @@ class FormFrame(ttk.Frame):
         else:
             acc.manager_upn = ""
         acc.manager_id = ""
-        acc.start_date = self._vars["start_date"].get()
         acc.distribution_groups = list(self._selected_groups)
         acc.licenses = [
             {"skuId": o.get("skuId", ""), "name": o.get("name", "")}
@@ -471,6 +469,17 @@ class FormFrame(ttk.Frame):
 
     def set_submit_state(self, enabled):
         self._submit_btn.config(state="normal" if enabled else "disabled")
+
+    def prefill(self, fields: dict):
+        """Fill entry fields from an external source (HR Tasks section).
+
+        Only touches plain text fields; display name and UPN rebuild
+        themselves from the name traces as usual.
+        """
+        for key, value in fields.items():
+            var = self._vars.get(key)
+            if var is not None and value:
+                var.set(str(value))
 
     def clear_live_data(self):
         self._selected_groups = []
