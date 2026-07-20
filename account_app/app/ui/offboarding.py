@@ -323,6 +323,12 @@ class OffboardingSection(ctk.CTkFrame):
     # Search
     # ------------------------------------------------------------------
 
+    def search_alias(self, alias: str):
+        """Prefill the alias box and run the search (used by HR Tasks)."""
+        self.alias_entry.delete(0, tk.END)
+        self.alias_entry.insert(0, alias)
+        self._on_search()
+
     def _on_search(self):
         if self._busy:
             return

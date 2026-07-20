@@ -1,0 +1,19 @@
+{
+  "_comment": "Copy to %APPDATA%\\M365Tools\\hr_feed.json and fill in — or just open the HR Tasks section, the setup card writes this for you. Never commit the filled-in file. 'columns' and 'form_map' are optional per feed (sensible defaults apply); 'org_codes' maps the org names HR writes in 'Account Required' (e.g. 'Email - Reach') to tenant keys from config.json.",
+  "rto": "TENANT_KEY_FROM_CONFIG_JSON",
+  "fetch_last": 15,
+  "poll_minutes": 5,
+  "org_codes": {
+    "someorgname": "TENANT_KEY"
+  },
+  "feeds": {
+    "onboarding": {
+      "share_url": "https://YOURTENANT.sharepoint.com/:x:/r/sites/YOURSITE/...&file=Onboarding.xlsx",
+      "table_name": ""
+    },
+    "offboarding": {
+      "share_url": "https://YOURTENANT.sharepoint.com/:x:/r/sites/YOURSITE/...&file=Offboarding.xlsx",
+      "table_name": ""
+    }
+  }
+}
