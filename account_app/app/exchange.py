@@ -775,18 +775,16 @@ class ExchangeSession:
         self._run(f"Set-User -Identity '{safe}' -Manager $null -Confirm:$false", timeout=60)
 
     def remove_all_groups(self, identity: str, dn: str | None = None, progress=None) -> list[str]:
-        """Remove the user from every group they belong to.
+        """Remove the user from distribution lists and mail-enabled security
+        groups — found in one shot with the directory "Members -eq <DN>"
+        recipient filter, removed via Remove-DistributionGroupMember.
 
-        Returns a list of human-readable result strings (one per group, plus
-        warnings). Covers two group families:
+        Microsoft 365 and plain security groups are handled by the Graph
+        step in offboarding (one memberOf call, direct member delete) —
+        the old per-group Get-UnifiedGroupLinks loop here skipped groups
+        silently whenever a single lookup failed.
 
-          * Distribution lists + mail-enabled security groups — found in one
-            shot with the directory "Members -eq <DN>" recipient filter, removed
-            via Remove-DistributionGroupMember.
-          * Microsoft 365 (Unified) groups — the Members filter does not cover
-            these, so we enumerate Unified groups and check each membership,
-            removing via Remove-UnifiedGroupLinks. Slower, but offboarding is
-            rare and per-user, so thoroughness wins over speed.
+        Returns a list of human-readable result strings.
         """
         results: list[str] = []
 
@@ -827,48 +825,8 @@ class ExchangeSession:
             except Exception as exc:
                 results.append(f"FAILED to remove from {gname}: {exc}")
 
-        # --- Microsoft 365 (Unified) groups --------------------------------
-        if progress:
-            progress("Checking Microsoft 365 groups...")
-        try:
-            ugroups = self._run_json(
-                "Get-UnifiedGroup -ResultSize Unlimited | "
-                "Select-Object @{n='id';e={$_.PrimarySmtpAddress}}, "
-                "@{n='name';e={$_.DisplayName}}",
-                timeout=300,
-            )
-        except Exception as exc:
-            ugroups = []
-            results.append(f"WARNING: could not list Microsoft 365 groups: {exc}")
-
-        target = (identity or "").lower()
-        for grp in ugroups:
-            gid = grp.get("id", "")
-            gname = grp.get("name", gid)
-            try:
-                members = self._run_json(
-                    f"Get-UnifiedGroupLinks -Identity '{self._safe(gid)}' -LinkType Members "
-                    "-ResultSize Unlimited | "
-                    "Select-Object @{n='smtp';e={$_.PrimarySmtpAddress}}",
-                    timeout=120,
-                )
-            except Exception:
-                continue
-            is_member = any((m.get("smtp") or "").lower() == target for m in members)
-            if not is_member:
-                continue
-            try:
-                self._run(
-                    f"Remove-UnifiedGroupLinks -Identity '{self._safe(gid)}' "
-                    f"-LinkType Members -Links '{safe_id}' -Confirm:$false",
-                    timeout=60,
-                )
-                results.append(f"Removed from Microsoft 365 group: {gname}")
-            except Exception as exc:
-                results.append(f"FAILED to remove from M365 group {gname}: {exc}")
-
         if not results:
-            results.append("No group memberships found.")
+            results.append("No distribution/security group memberships found.")
         return results
 
     def check_students(self, rto: str, student_ids: list[str], group_name: str, progress, should_stop=None) -> None:

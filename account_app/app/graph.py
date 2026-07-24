@@ -551,6 +551,35 @@ class GraphManager:
             return None
         raise GraphError(f"GET user failed (HTTP {status}): {self._err_text(doc)}")
 
+    def list_user_groups(self, token: str, identity: str) -> list[dict]:
+        """All directory groups the user belongs to, with the fields needed
+        to decide how (or whether) membership can be removed."""
+        groups: list[dict] = []
+        path = (
+            f"/users/{urllib.parse.quote(identity)}/memberOf/microsoft.graph.group"
+            "?$select=id,displayName,groupTypes,mailEnabled,securityEnabled,membershipRule"
+            "&$top=999"
+        )
+        while path:
+            status, doc = self._request("GET", path, token)
+            if status != 200:
+                raise GraphError(f"memberOf failed (HTTP {status}): {self._err_text(doc)}")
+            groups.extend(doc.get("value", []))
+            next_link = doc.get("@odata.nextLink", "")
+            path = next_link.split("/v1.0", 1)[1] if "/v1.0" in next_link else ""
+        return groups
+
+    def remove_group_member(self, token: str, group_id: str, user_id: str) -> None:
+        status, doc = self._request(
+            "DELETE",
+            f"/groups/{group_id}/members/{user_id}/$ref",
+            token,
+        )
+        if status not in (200, 204):
+            raise GraphError(
+                f"member remove failed (HTTP {status}): {self._err_text(doc)}"
+            )
+
     def set_account_enabled(self, token: str, identity: str, enabled: bool) -> None:
         """Set Entra accountEnabled. enabled=False is the real 'Block sign-in' —
         no Exchange Online cmdlet can write this flag."""

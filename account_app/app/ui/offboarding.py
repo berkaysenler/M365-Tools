@@ -802,11 +802,11 @@ class OffboardingSection(ctk.CTkFrame):
                         self._log_bg(f"      {line}", tag)
                     removed = sum(1 for l in out if l.startswith("Removed"))
                     return f"{removed} group(s) removed"
-                step("Remove all group memberships", _groups)
+                step("Remove distribution/security groups (Exchange)", _groups)
 
         # --- Graph steps --------------------------------------------------
         needs_graph = (opts["block_signin"] or remove_skus
-                       or opts["reset_password"])
+                       or opts["reset_password"] or opts["remove_groups"])
         graph_token = None
         if needs_graph:
             graph_token = self._get_graph_token_cached(auth_rto, graph_tokens)
@@ -814,6 +814,37 @@ class OffboardingSection(ctk.CTkFrame):
                 results.append(("Microsoft Graph sign-in", False, "sign-in unavailable"))
 
         if graph_token:
+            if opts["remove_groups"]:
+                def _graph_groups():
+                    # Microsoft 365 and plain security groups — EXO cmdlets
+                    # either can't see these or (for Unified) needed a
+                    # per-group scan that skipped silently on any error.
+                    # One memberOf call, then direct membership deletes.
+                    groups = self.graph_mgr.list_user_groups(graph_token, info["id"])
+                    removed = 0
+                    failed = 0
+                    for g in groups:
+                        gname = g.get("displayName") or g.get("id")
+                        unified = "Unified" in (g.get("groupTypes") or [])
+                        plain_security = g.get("securityEnabled") and not g.get("mailEnabled")
+                        if not unified and not plain_security:
+                            continue  # DLs/mail-security handled by the Exchange step
+                        if g.get("membershipRule"):
+                            self._log_bg(
+                                f"      Skipped dynamic group (rule-based): {gname}", "dim")
+                            continue
+                        try:
+                            self.graph_mgr.remove_group_member(
+                                graph_token, g["id"], info["id"])
+                            removed += 1
+                            self._log_bg(f"      Removed from group: {gname}", "dim")
+                        except Exception as exc:
+                            failed += 1
+                            self._log_bg(f"      FAILED to remove from {gname}: {exc}", "fail")
+                    if failed:
+                        raise RuntimeError(f"{removed} removed, {failed} failed")
+                    return f"{removed} group(s) removed"
+                step("Remove Microsoft 365/security groups (Graph)", _graph_groups)
             if opts["block_signin"]:
                 step("Block sign-in (Entra accountEnabled=false)",
                      lambda: self.graph_mgr.set_account_enabled(graph_token, upn, False))
